@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="uk">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Графік 1.1 — 24 години</title>
+  <style>
+    :root {
+      --on-bg: #ffd84d;
+      /* жовтий */
+      --off-bg: #2f2f34;
+      /* темно-сірий */
+      --unknown-bg: #cfcfd6;
+      /* на випадок невідомо */
+      --on-fg: #000;
+      --off-fg: #fff;
+      --unknown-fg: #111;
+      --card-bg: #fff;
+      --card-fg: #111;
+      --muted: #6b7280;
+      --ring: #e5e7eb;
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Inter, Arial, sans-serif;
+      color: var(--card-fg);
+      background: #f7f7fb;
+    }
+
+    .wrap {
+      max-width: 1000px;
+      margin: 24px auto;
+      padding: 16px;
+    }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .title {
+      font-weight: 700;
+      font-size: 20px
+    }
+
+    .meta {
+      font-size: 14px;
+      color: var(--muted)
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap
+    }
+
+    button {
+      border: 1px solid var(--ring);
+      background: #fff;
+      color: #111;
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: translateY(1px)
+    }
+
+    .grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+    }
+
+    .cell {
+      position: relative;
+      border-radius: 12px;
+      padding: 10px 8px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 68px;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, .03) inset, 0 1px 3px rgba(0, 0, 0, .05);
+      transition: transform .06s ease;
+      user-select: none;
+    }
+
+    .cell:hover {
+      transform: translateY(-1px)
+    }
+
+    .hour {
+      font-size: 12px;
+      opacity: .9;
+      letter-spacing: .2px;
+    }
+
+    .emoji {
+      font-size: 22px;
+      line-height: 1;
+      margin-top: 6px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin: 12px 0 8px;
+      font-size: 14px;
+      color: #374151;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--ring);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .error {
+      background: #fff3f3;
+      border: 1px solid #ffd4d4;
+      color: #b42318;
+      padding: 10px 12px;
+      border-radius: 10px;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="title">Графік відключень — черга 1.1</div>
+      <div class="controls">
+        <button id="refreshBtn" title="Оновити зараз">🔄 Оновити</button>
+        <span class="meta" id="updatedMeta">Останнє оновлення: —</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="legend">
+        <span><span class="dot" style="background:var(--on-bg)"></span>Електрика є <span
+            aria-hidden="true">⚡</span></span>
+        <span><span class="dot" style="background:var(--off-bg)"></span>Відключено <span
+            aria-hidden="true">🌑</span></span>
+      </div>
+      <div id="statusMsg" class="meta" style="margin-bottom:8px;"></div>
+      <div id="errorMsg" class="error" style="display:none;"></div>
+      <div id="grid" class="grid" aria-label="Сітка станів на 24 години"></div>
+    </div>
+    <p class="meta" style="margin-top:10px">
+      Джерело: <code>https://gordovoy.net/blackout.php?queue=1.1</code>
+      <span style="margin-left: 12px;">Версія: <span id="version">—</span></span>
+    </p>
+  </div>
+
+  <script>
+    // Версія коду - оновлюється після кожної зміни
+    const VERSION = '1.6';
+    
+    const API_URL = 'https://gordovoy.net/blackout.php?queue=1.1';
+    const gridEl = document.getElementById('grid');
+    const updatedMeta = document.getElementById('updatedMeta');
+    const errorMsg = document.getElementById('errorMsg');
+    const statusMsg = document.getElementById('statusMsg');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const versionEl = document.getElementById('version');
+
+    // Малюємо 24 порожні клітинки одразу
+    function initialGrid() {
+      gridEl.innerHTML = '';
+      for (let h = 0; h < 24; h++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.h = h;
+        cell.style.background = 'var(--unknown-bg)';
+        cell.style.color = 'var(--unknown-fg)';
+        cell.innerHTML = `<div class="hour">${String(h).padStart(2, '0')}:00</div>
+                          <div class="emoji" aria-hidden="true">?</div>
+                          <span class="sr-only">Невідомо</span>`;
+        gridEl.appendChild(cell);
+      }
+    }
+
+    // Допоміжне: з інтервалів робимо 24-годинний масив (true = є електрика, false = відключено)
+    function hoursFromIntervals(intervals) {
+      // За замовчуванням вважаємо, що електрика Є (true)
+      const hours = Array(24).fill(true);
+      const parseHM = s => {
+        const [hh, mm] = s.split(':').map(n => parseInt(n, 10));
+        return [isNaN(hh) ? 0 : hh, isNaN(mm) ? 0 : mm];
+      };
+      const overlapsHour = (start, end, h) => {
+        // нормалізуємо в хвилини [0..1440), з урахуванням перетікання через північ
+        const toMin = (hh, mm) => hh * 60 + mm;
+        let [sh, sm] = parseHM(start);
+        let [eh, em] = parseHM(end);
+        let sMin = toMin(sh, sm);
+        let eMin = toMin(eh, em);
+        const hStart = h * 60, hEnd = (h + 1) * 60;
+        if (eMin <= sMin) eMin += 1440; // через північ
+        // перевіряємо перетин [sMin,eMin) з [hStart,hEnd) та з [hStart+1440,hEnd+1440)
+        const intersect = (a1, a2, b1, b2) => Math.max(a1, b1) < Math.min(a2, b2);
+        return intersect(sMin, eMin, hStart, hEnd) || intersect(sMin, eMin, hStart + 1440, hEnd + 1440);
+      };
+      for (const it of intervals) {
+        const off = ('off' in it) ? !!it.off : (String(it.status || '').toLowerCase() === 'off' || String(it.type || '').toLowerCase().includes('off'));
+        const on = ('on' in it) ? !!it.on : (String(it.status || '').toLowerCase() === 'on');
+        const start = it.start || it.from || it.begin;
+        const end = it.end || it.to || it.until;
+        if (!start || !end) continue;
+        for (let h = 0; h < 24; h++) {
+          if (overlapsHour(start, end, h)) {
+            if (off) hours[h] = false;
+            else if (on) hours[h] = true;
+          }
+        }
+      }
+      return hours;
+    }
+
+    // Гнучкий парсер відповіді API → масив із 24 елементів: true (є), false (відключено), null (невідомо)
+    function normalizeTo24(data) {
+      // 1) Якщо є schedule з діапазонами годин (наприклад: "02-04, 06-08, 10-13")
+      if (data?.schedule && typeof data.schedule === 'string') {
+        statusMsg.textContent = 'Формат API: schedule з діапазонами годин';
+        // За замовчуванням електрика є (true)
+        const hours = Array(24).fill(true);
+        
+        // Розбиваємо рядок по комах і обробляємо кожен діапазон
+        const ranges = data.schedule.split(',').map(s => s.trim()).filter(Boolean);
+        
+        for (const range of ranges) {
+          // Шукаємо формат "HH-HH" (наприклад "02-04")
+          const match = range.match(/^(\d{1,2})\s*[-–]\s*(\d{1,2})$/);
+          if (match) {
+            const start = parseInt(match[1], 10);
+            const end = parseInt(match[2], 10);
+            
+            // Перевіряємо валідність
+            if (start >= 0 && start <= 23 && end >= 0 && end <= 23) {
+              // Позначаємо всі години в діапазоні як відключені (false)
+              // Діапазон включний: 02-04 означає години 2, 3, 4
+              for (let h = start; h <= end; h++) {
+                hours[h] = false;
+              }
+            }
+          }
+        }
+        
+        return hours;
+      }
+
+      // 2) Якщо є масив із 24 значень
+      const tryArrays = [
+        data?.hours, data?.by_hour, data?.states, data?.status, data?.power, data?.electricity
+      ].find(a => Array.isArray(a) && a.length === 24);
+      if (tryArrays) {
+        statusMsg.textContent = 'Формат API: 24-годинний масив';
+        return tryArrays.map(v => {
+          // Поширені випадки: 1/0, true/false, "on"/"off", "power"/"blackout"
+          if (typeof v === 'boolean') return v;
+          if (typeof v === 'number') return v > 0 ? false : true; // припущення: 1 = відключено
+          const s = String(v).toLowerCase().trim();
+          if (['on', 'power', 'yes', 'y', 'true', '1', 'green'].includes(s)) return true;
+          if (['off', 'blackout', 'no', 'n', 'false', '0', 'red'].includes(s)) return false;
+          return null;
+        });
+      }
+
+      // 3) Якщо є перелік годин відключення (індекси 0..23 або "HH")
+      const offList = data?.off_hours || data?.outage_hours || data?.blackout_hours;
+      if (Array.isArray(offList)) {
+        statusMsg.textContent = 'Формат API: список годин відключення';
+        const set = new Set(offList.map(x => (typeof x === 'string' && x.includes(':')) ? parseInt(x.split(':')[0], 10) : parseInt(x, 10)));
+        return Array.from({ length: 24 }, (_, h) => set.has(h) ? false : true);
+      }
+
+      // 4) Якщо інтервали
+      const intervals = data?.intervals || data?.outages || data?.blackouts;
+      if (Array.isArray(intervals) && intervals.length) {
+        statusMsg.textContent = 'Формат API: інтервали часу';
+        return hoursFromIntervals(intervals);
+      }
+
+      // 5) Якщо прийшов рядок "HH:MM-HH:MM; ..."
+      if (typeof data === 'string') {
+        statusMsg.textContent = 'Формат API: рядок інтервалів';
+        const parts = data.split(/[;,]+/).map(s => s.trim()).filter(Boolean);
+        const intervals = parts.map(p => {
+          const m = p.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+          return m ? { start: m[1], end: m[2], off: true } : null;
+        }).filter(Boolean);
+        if (intervals.length) return hoursFromIntervals(intervals);
+      }
+
+      // Невідомий формат
+      statusMsg.textContent = 'Невідомий формат відповіді API';
+      return Array(24).fill(null);
+    }
+
+    function render(hours) {
+      for (let h = 0; h < 24; h++) {
+        const cell = gridEl.querySelector(`.cell[data-h="${h}"]`);
+        if (!cell) continue;
+        const val = hours[h];
+        if (val === true) { // електрика є
+          cell.style.background = 'var(--on-bg)';
+          cell.style.color = 'var(--on-fg)';
+          cell.querySelector('.emoji').textContent = '⚡';
+          cell.querySelector('.sr-only')?.remove();
+          cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Є електрика</span>');
+        } else if (val === false) { // відключено
+          cell.style.background = 'var(--off-bg)';
+          cell.style.color = 'var(--off-fg)';
+          cell.querySelector('.emoji').textContent = '🌑';
+          cell.querySelector('.sr-only')?.remove();
+          cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Відключено</span>');
+        } else { // невідомо
+          cell.style.background = 'var(--unknown-bg)';
+          cell.style.color = 'var(--unknown-fg)';
+          cell.querySelector('.emoji').textContent = '…';
+          cell.querySelector('.sr-only')?.remove();
+          cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Невідомо</span>');
+        }
+      }
+    }
+
+    // Функція для завантаження через CORS proxy (corsproxy.io)
+    async function fetchWithProxy(url) {
+      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+      const res = await fetch(proxyUrl, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      }
+      return res;
+    }
+
+    async function load() {
+      errorMsg.style.display = 'none';
+      statusMsg.textContent = 'Завантаження…';
+      try {
+        // Використовуємо corsproxy.io для обходу CORS
+        const res = await fetchWithProxy(API_URL);
+        const text = await res.text();
+        
+        // Виводимо сиру відповідь в консоль
+        console.log('=== Відповідь від API (сирий текст) ===');
+        console.log(text);
+        console.log('=== Кінець сирої відповіді ===\n');
+        
+        let data;
+        try { 
+          data = JSON.parse(text);
+          console.log('=== Відповідь від API (розпарсений JSON) ===');
+          console.log(data);
+          console.log('=== Кінець JSON відповіді ===\n');
+        } catch { 
+          data = text;
+          console.log('Відповідь не є JSON, використовується як текст');
+        }
+        
+        // Обробляємо дані
+        const hours = normalizeTo24(data);
+        console.log('=== Результат normalizeTo24 (24 години) ===');
+        console.log(hours);
+        console.log('=== Кінець результату ===\n');
+        
+        render(hours);
+        const ts = new Date();
+        updatedMeta.textContent = 'Останнє оновлення: ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        statusMsg.textContent = 'Готово';
+      } catch (err) {
+        const userMessage = 'Не вдалося отримати дані з API. ' + err.message;
+        errorMsg.textContent = userMessage;
+        errorMsg.style.display = 'block';
+        statusMsg.textContent = 'Показано невідомі значення';
+        render(Array(24).fill(null));
+        console.error('Помилка завантаження даних:', err);
+      }
+    }
+
+    // Ініціалізація
+    versionEl.textContent = VERSION;
+    initialGrid();
+    load();
+
+    // Кнопка «Оновити»
+    refreshBtn.addEventListener('click', load);
+
+    // (Не вимагалося, але легко ввімкнути автооновлення — розкоментуйте)
+    // setInterval(load, 5 * 60 * 1000);
+  </script>
+</body>
+
+</html>
