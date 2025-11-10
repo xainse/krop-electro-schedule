@@ -103,6 +103,11 @@
       transform: translateY(-1px)
     }
 
+    .cell.active {
+      border: 3px solid #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2), 0 1px 0 rgba(0, 0, 0, .03) inset, 0 1px 3px rgba(0, 0, 0, .05);
+    }
+
     .hour {
       font-size: 12px;
       opacity: .9;
@@ -193,7 +198,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.6';
+    const VERSION = '1.7';
     
     const API_URL = 'https://gordovoy.net/blackout.php?queue=1.1';
     const gridEl = document.getElementById('grid');
@@ -361,6 +366,26 @@
           cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Невідомо</span>');
         }
       }
+      // Оновлюємо виділення активної години після рендерингу
+      updateActiveHour();
+    }
+
+    // Функція для оновлення виділення поточної години
+    function updateActiveHour() {
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      // Прибираємо виділення з усіх клітинок
+      const allCells = gridEl.querySelectorAll('.cell');
+      allCells.forEach(cell => {
+        cell.classList.remove('active');
+      });
+      
+      // Додаємо виділення до поточної години
+      const currentCell = gridEl.querySelector(`.cell[data-h="${currentHour}"]`);
+      if (currentCell) {
+        currentCell.classList.add('active');
+      }
     }
 
     // Функція для завантаження через CORS proxy (corsproxy.io)
@@ -420,12 +445,16 @@
     // Ініціалізація
     versionEl.textContent = VERSION;
     initialGrid();
+    updateActiveHour(); // Виділяємо поточну годину при завантаженні
     load();
 
     // Кнопка «Оновити»
     refreshBtn.addEventListener('click', load);
 
-    // (Не вимагалося, але легко ввімкнути автооновлення — розкоментуйте)
+    // Автоматичне оновлення виділення активної години (перевіряємо кожну хвилину)
+    setInterval(updateActiveHour, 60 * 1000);
+
+    // (Не вимагалося, але легко ввімкнути автооновлення даних — розкоментуйте)
     // setInterval(load, 5 * 60 * 1000);
   </script>
 </body>
