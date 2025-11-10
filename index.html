@@ -32,168 +32,7 @@
   </script>
   
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <style>
-    :root {
-      --on-bg: #ffd84d;
-      /* жовтий */
-      --off-bg: #2f2f34;
-      /* темно-сірий */
-      --unknown-bg: #cfcfd6;
-      /* на випадок невідомо */
-      --on-fg: #000;
-      --off-fg: #fff;
-      --unknown-fg: #111;
-      --card-bg: #fff;
-      --card-fg: #111;
-      --muted: #6b7280;
-      --ring: #e5e7eb;
-    }
-
-    * {
-      box-sizing: border-box
-    }
-
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Inter, Arial, sans-serif;
-      color: var(--card-fg);
-      background: #f7f7fb;
-    }
-
-    .wrap {
-      max-width: 1000px;
-      margin: 24px auto;
-      padding: 16px;
-    }
-
-    .header {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-
-    .title {
-      font-weight: 700;
-      font-size: 20px
-    }
-
-    .meta {
-      font-size: 14px;
-      color: var(--muted)
-    }
-
-    .controls {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap
-    }
-
-    button {
-      border: 1px solid var(--ring);
-      background: #fff;
-      color: #111;
-      padding: 8px 12px;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-
-    button:active {
-      transform: translateY(1px)
-    }
-
-    .grid {
-      display: grid;
-      gap: 8px;
-      grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
-    }
-
-    .cell {
-      position: relative;
-      border-radius: 12px;
-      padding: 10px 8px;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      min-height: 68px;
-      box-shadow: 0 1px 0 rgba(0, 0, 0, .03) inset, 0 1px 3px rgba(0, 0, 0, .05);
-      transition: transform .06s ease;
-      user-select: none;
-    }
-
-    .cell:hover {
-      transform: translateY(-1px)
-    }
-
-    .cell.active {
-      border: 3px solid #3b82f6;
-      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2), 0 1px 0 rgba(0, 0, 0, .03) inset, 0 1px 3px rgba(0, 0, 0, .05);
-    }
-
-    .hour {
-      font-size: 12px;
-      opacity: .9;
-      letter-spacing: .2px;
-    }
-
-    .emoji {
-      font-size: 22px;
-      line-height: 1;
-      margin-top: 6px;
-    }
-
-    .legend {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      margin: 12px 0 8px;
-      font-size: 14px;
-      color: #374151;
-    }
-
-    .dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 4px;
-      display: inline-block;
-      vertical-align: middle;
-      margin-right: 6px;
-    }
-
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--ring);
-      border-radius: 14px;
-      padding: 14px;
-    }
-
-    .error {
-      background: #fff3f3;
-      border: 1px solid #ffd4d4;
-      color: #b42318;
-      padding: 10px 12px;
-      border-radius: 10px;
-      margin: 10px 0;
-      font-size: 14px;
-    }
-
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
@@ -221,11 +60,15 @@
       Джерело: <code>https://gordovoy.net/blackout.php?queue=1.1</code>
       <span style="margin-left: 12px;">Версія: <span id="version">—</span></span>
     </p>
+    <div class="notification-status">
+      <span id="notificationStatusText">Notifications: Checking...</span>
+      <a href="#" id="requestNotificationLink" style="display:none;">Enable notifications</a>
+    </div>
   </div>
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.8';
+    const VERSION = '1.9';
     
     const API_URL = 'https://gordovoy.net/blackout.php?queue=1.1';
     const gridEl = document.getElementById('grid');
@@ -234,6 +77,11 @@
     const statusMsg = document.getElementById('statusMsg');
     const refreshBtn = document.getElementById('refreshBtn');
     const versionEl = document.getElementById('version');
+    const notificationStatusText = document.getElementById('notificationStatusText');
+    const requestNotificationLink = document.getElementById('requestNotificationLink');
+    
+    // Зберігаємо попередній графік для порівняння
+    let previousHours = null;
 
     // Малюємо 24 порожні клітинки одразу
     function initialGrid() {
@@ -415,6 +263,56 @@
       }
     }
 
+    // Функція для запиту дозволу на нотифікації
+    async function requestNotificationPermission() {
+      if ('Notification' in window) {
+        const permission = await Notification.requestPermission();
+        localStorage.setItem('notificationPermission', permission);
+        updateNotificationStatus();
+        return permission;
+      }
+      return null;
+    }
+
+    // Функція для оновлення статусу нотифікацій у футері
+    function updateNotificationStatus() {
+      if (!('Notification' in window)) {
+        notificationStatusText.textContent = 'Notifications: Not supported';
+        requestNotificationLink.style.display = 'none';
+        return;
+      }
+
+      const permission = Notification.permission;
+      localStorage.setItem('notificationPermission', permission);
+
+      if (permission === 'granted') {
+        notificationStatusText.textContent = 'Notifications: Enabled';
+        requestNotificationLink.style.display = 'none';
+      } else if (permission === 'denied') {
+        notificationStatusText.textContent = 'Notifications: Disabled';
+        requestNotificationLink.style.display = 'none';
+      } else {
+        notificationStatusText.textContent = 'Notifications: Disabled';
+        requestNotificationLink.style.display = 'inline';
+      }
+    }
+
+    // Функція для перевірки чи змінився графік
+    function hasScheduleChanged(prev, current) {
+      if (!prev) return false; // Перше завантаження - не показуємо
+      return JSON.stringify(prev) !== JSON.stringify(current);
+    }
+
+    // Функція для показу нотифікації
+    function showNotification(message) {
+      if (Notification.permission === 'granted') {
+        new Notification('Power Schedule', {
+          body: message,
+          icon: 'favicon.svg'
+        });
+      }
+    }
+
     // Функція для завантаження через CORS proxy (corsproxy.io)
     async function fetchWithProxy(url) {
       const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
@@ -455,6 +353,15 @@
         console.log(hours);
         console.log('=== Кінець результату ===\n');
         
+        // Перевіряємо чи змінився графік
+        if (hasScheduleChanged(previousHours, hours)) {
+          // Показуємо нотифікацію якщо графік змінився
+          showNotification('Power schedule updated');
+        }
+        
+        // Зберігаємо поточний графік як попередній
+        previousHours = hours;
+        
         render(hours);
         const ts = new Date();
         updatedMeta.textContent = 'Останнє оновлення: ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -473,10 +380,25 @@
     versionEl.textContent = VERSION;
     initialGrid();
     updateActiveHour(); // Виділяємо поточну годину при завантаженні
+    
+    // Оновлюємо статус нотифікацій при завантаженні
+    updateNotificationStatus();
+    
+    // Запитуємо дозвіл на нотифікації при завантаженні
+    if ('Notification' in window && Notification.permission === 'default') {
+      requestNotificationPermission();
+    }
+    
     load();
 
     // Кнопка «Оновити»
     refreshBtn.addEventListener('click', load);
+
+    // Обробник для посилання запиту дозволу на нотифікації
+    requestNotificationLink.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await requestNotificationPermission();
+    });
 
     // Автоматичне оновлення виділення активної години (перевіряємо кожну хвилину)
     setInterval(updateActiveHour, 60 * 1000);
