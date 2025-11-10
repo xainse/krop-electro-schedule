@@ -68,7 +68,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.9';
+    const VERSION = '1.10';
     
     const API_URL = 'https://gordovoy.net/blackout.php?queue=1.1';
     const gridEl = document.getElementById('grid');
@@ -154,11 +154,12 @@
             const start = parseInt(match[1], 10);
             const end = parseInt(match[2], 10);
             
-            // Перевіряємо валідність
-            if (start >= 0 && start <= 23 && end >= 0 && end <= 23) {
+            // Перевіряємо валідність (дозволяємо значення до 24 для обробки "22-24" як "22, 23")
+            if (start >= 0 && start <= 24 && end >= 0 && end <= 24) {
               // Позначаємо всі години в діапазоні як відключені (false)
-              // Діапазон включний: 02-04 означає години 2, 3, 4
-              for (let h = start; h <= end; h++) {
+              // Діапазон: 02-04 означає години 2, 3 (не включаючи 4)
+              // Використовуємо h < end для правильного парсингу
+              for (let h = start; h < end && h < 24; h++) {
                 hours[h] = false;
               }
             }
