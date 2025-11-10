@@ -178,3 +178,32 @@ button:active {
   text-decoration: underline;
 }
 
+.donation-banner {
+  height: 100px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  border-radius: 12px;
+}
+
+.donation-banner a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.donation-banner a:hover {
+  opacity: 0.9;
+}
+
+.donation-banner img {
+  height: 60px;
+  width: auto;
+}
+
