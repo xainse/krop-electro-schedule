@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+
+  <!-- Background circle -->
+
+  <circle cx="50" cy="50" r="50" fill="#1a1a1a"/>
+
+  
+
+  <!-- Lightning bolt -->
+
+  <path d="M 55 15 L 35 50 L 50 50 L 45 85 L 75 45 L 55 45 Z" 
+
+        fill="#FFD700" 
+
+        stroke="#FFA500" 
+
+        stroke-width="2"/>
+
+  
+
+  <!-- Inner highlight for 3D effect -->
+
+  <path d="M 55 15 L 35 50 L 50 50 L 47 65" 
+
+        fill="#FFEB3B" 
+
+        opacity="0.6"/>
+
+</svg>
+
