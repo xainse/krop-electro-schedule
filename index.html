@@ -287,13 +287,16 @@
 
     // Функція для запиту дозволу на нотифікації
     async function requestNotificationPermission() {
-      if ('Notification' in window) {
+      if (!('Notification' in window)) return null;
+      try {
         const permission = await Notification.requestPermission();
         localStorage.setItem('notificationPermission', permission);
         updateNotificationStatus();
         return permission;
+      } catch (e) {
+        console.warn('requestNotificationPermission failed:', e);
+        return null;
       }
-      return null;
     }
 
     // Функція для оновлення статусу нотифікацій у футері
@@ -327,11 +330,19 @@
 
     // Функція для показу нотифікації
     function showNotification(message) {
-      if (Notification.permission === 'granted') {
-        new Notification('Power Schedule', {
-          body: message,
-          icon: 'favicon.svg'
-        });
+      // Guard against environments where Notification is not defined
+      if (typeof Notification === 'undefined') return;
+      try {
+        if (Notification.permission === 'granted') {
+          new Notification('Power Schedule', {
+            body: message,
+            icon: 'favicon.svg'
+          });
+        }
+      } catch (e) {
+        // Some browsers (or content blockers) might throw when creating notifications.
+        // Don't let that break the app; log for diagnostics.
+        console.warn('Notification failed:', e);
       }
     }
 
