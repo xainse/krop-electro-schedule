@@ -40,6 +40,15 @@
     <div class="header">
       <div class="title">Графік відключень — черга 1.1</div>
       <div class="controls">
+        <label for="queueSelect" class="queue-label">Черга</label>
+        <select id="queueSelect" class="queue-select" title="Вибрати чергу">
+          <option>1.1</option><option>1.2</option>
+          <option>2.1</option><option>2.2</option>
+          <option>3.1</option><option>3.2</option>
+          <option>4.1</option><option>4.2</option>
+          <option>5.1</option><option>5.2</option>
+          <option>6.1</option><option>6.2</option>
+        </select>
         <button id="refreshBtn" title="Оновити зараз">🔄 Оновити</button>
         <span class="meta" id="updatedMeta">Останнє оновлення: —</span>
       </div>
@@ -74,9 +83,14 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.11';
+    const VERSION = '1.12';
     
-    const API_URL = 'https://gordovoy.net/blackout.php?queue=1.1';
+    const titleEl = document.querySelector('.title');
+    const sourceCodeEl = document.querySelector('p.meta code');
+    const queueSelect = document.getElementById('queueSelect');
+    let currentQueue = localStorage.getItem('queue') || '1.1';
+    queueSelect.value = currentQueue;
+    let API_URL = `https://gordovoy.net/blackout.php?queue=${currentQueue}`;
     const gridEl = document.getElementById('grid');
     const updatedMeta = document.getElementById('updatedMeta');
     const errorMsg = document.getElementById('errorMsg');
@@ -388,6 +402,15 @@
     initialGrid();
     updateActiveHour(); // Виділяємо поточну годину при завантаженні
     
+    // Застосовуємо поточну чергу до заголовка та джерела
+    function applyQueue() {
+      API_URL = `https://gordovoy.net/blackout.php?queue=${currentQueue}`;
+      if (sourceCodeEl) sourceCodeEl.textContent = API_URL;
+      if (titleEl) titleEl.textContent = `Графік відключень — черга ${currentQueue}`;
+      document.title = `Графік ${currentQueue} — 24 години`;
+    }
+    applyQueue();
+    
     // Оновлюємо статус нотифікацій при завантаженні
     updateNotificationStatus();
     
@@ -400,6 +423,14 @@
 
     // Кнопка «Оновити»
     refreshBtn.addEventListener('click', load);
+    
+    // Зміна черги
+    queueSelect.addEventListener('change', () => {
+      currentQueue = queueSelect.value;
+      localStorage.setItem('queue', currentQueue);
+      applyQueue();
+      load();
+    });
 
     // Обробник для посилання запиту дозволу на нотифікації
     requestNotificationLink.addEventListener('click', async (e) => {

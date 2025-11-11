@@ -178,6 +178,25 @@ button:active {
   text-decoration: underline;
 }
 
+.queue-label {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.queue-select {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--ring);
+  background: #fff;
+  color: #111;
+}
+
+@media (max-width: 480px) {
+  .queue-select {
+    width: 100%;
+  }
+}
+
 .donation-banner {
   height: 100px;
   background: #000;
