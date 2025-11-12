@@ -84,7 +84,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.13';
+    const VERSION = '1.14';
     
     const titleEl = document.querySelector('.title');
     const sourceCodeEl = document.querySelector('p.meta code');
@@ -453,8 +453,8 @@
     // Автоматичне оновлення виділення активної години (перевіряємо кожну хвилину)
     setInterval(updateActiveHour, 60 * 1000);
 
-    // (Не вимагалося, але легко ввімкнути автооновлення даних — розкоментуйте)
-    // setInterval(load, 5 * 60 * 1000);
+    // Автоматичне оновлення даних кожні 10 хвилин
+    setInterval(load, 10 * 60 * 1000);
   </script>
 </body>
 
