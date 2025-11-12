@@ -5,6 +5,11 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [1.15] - 2025-11-10
+
+### Змінено
+- Оновлено посилання "Версія" у футері - тепер веде на CHANGELOG.md в GitHub репозиторії
+
 ## [1.14] - 2025-11-10
 
 ### Виправлено
