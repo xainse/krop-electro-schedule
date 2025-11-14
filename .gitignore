@@ -25,3 +25,6 @@ npm-debug.log*
 *.tmp
 *.temp
 
+# Cache files
+api/cache/
+
