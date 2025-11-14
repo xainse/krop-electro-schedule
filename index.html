@@ -67,7 +67,7 @@
       <div id="grid" class="grid" aria-label="Сітка станів на 24 години"></div>
     </div>
     <p class="meta" style="margin-top:10px">
-      Дані беруться зі сторінки <a href="https://kiroe.com.ua/electricity-blackout" target="_blank" rel="noopener noreferrer">https://kiroe.com.ua/electricity-blackout</a>. Отримуються вони через API, яке парсить той сайт.
+      Дані беруться зі сторінки <a href="https://kiroe.com.ua/electricity-blackout" target="_blank" rel="noopener noreferrer">https://kiroe.com.ua/electricity-blackout</a>.
       <span style="margin-left: 12px;">
           <a href="https://github.com/xainse/krop-electro-schedule/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Версія:</a> <span id="version">—</span></span>
     </p>
@@ -85,7 +85,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.18';
+    const VERSION = '1.19';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -333,8 +333,8 @@
         const firstHalf = periods[h * 2];     // Перша півгодина (HH:00-HH:30)
         const secondHalf = periods[h * 2 + 1]; // Друга півгодина (HH:30-HH+1:00)
         
-        // Видаляємо попередні класи півгодин
-        cell.classList.remove('half-left-off', 'half-right-off');
+        // Видаляємо попередні класи півгодин та білого тексту
+        cell.classList.remove('half-left-off', 'half-right-off', 'has-white-text');
         
         // Визначаємо стан клітинки на основі двох півгодин
         if (firstHalf === true && secondHalf === true) {
@@ -348,6 +348,7 @@
           // Обидва періоди false → повністю темно-сіра
           cell.style.background = 'var(--off-bg)';
           cell.style.color = 'var(--off-fg)';
+          cell.classList.add('has-white-text'); // Додаємо клас для тіні на білому тексті
           cell.querySelector('.emoji').textContent = '🌑';
           cell.querySelector('.sr-only')?.remove();
           cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Відключено</span>');
@@ -355,7 +356,7 @@
           // Перший false, другий true → ліва половина темно-сіра, права жовта
           cell.style.background = 'linear-gradient(to right, var(--off-bg) 50%, var(--on-bg) 50%)';
           cell.style.color = 'var(--off-fg)';
-          cell.classList.add('half-left-off');
+          cell.classList.add('half-left-off', 'has-white-text'); // Додаємо клас для тіні на білому тексті
           cell.querySelector('.emoji').textContent = '🌑⚡';
           cell.querySelector('.sr-only')?.remove();
           cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Відключено першу півгодину</span>');
