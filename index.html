@@ -52,7 +52,7 @@
         <button id="refreshBtn" title="Оновити зараз">🔄 Оновити</button>
         <span class="meta" id="updatedMeta">Останнє оновлення: —</span>
       </div>
-      <div class="update-warning">Вибачте за незручності, є проблеми з оновленням даних</div>
+      <div id="apiErrorMsg" class="update-warning" style="display:none;"></div>
     </div>
 
     <div class="card">
@@ -67,7 +67,7 @@
       <div id="grid" class="grid" aria-label="Сітка станів на 24 години"></div>
     </div>
     <p class="meta" style="margin-top:10px">
-      Джерело: <code>https://xain.in.ua/api/blackout.php?queue=1.1</code>
+      Дані беруться зі сторінки <a href="https://kiroe.com.ua/electricity-blackout" target="_blank" rel="noopener noreferrer">https://kiroe.com.ua/electricity-blackout</a>. Отримуються вони через API, яке парсить той сайт.
       <span style="margin-left: 12px;">
           <a href="https://github.com/xainse/krop-electro-schedule/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Версія:</a> <span id="version">—</span></span>
     </p>
@@ -85,11 +85,11 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.17';
+    const VERSION = '1.18';
     
     const titleEl = document.querySelector('.title');
-    const sourceCodeEl = document.querySelector('p.meta code');
     const queueSelect = document.getElementById('queueSelect');
+    const apiErrorMsg = document.getElementById('apiErrorMsg');
     let currentQueue = localStorage.getItem('queue') || '1.1';
     queueSelect.value = currentQueue;
     let API_URL = `https://xain.in.ua/api/blackout.php?queue=${currentQueue}`;
@@ -471,6 +471,7 @@
 
     async function load() {
       errorMsg.style.display = 'none';
+      apiErrorMsg.style.display = 'none';
       statusMsg.textContent = 'Завантаження…';
       try {
         // Використовуємо corsproxy.io для обходу CORS
@@ -488,6 +489,14 @@
           console.log('=== Відповідь від API (розпарсений JSON) ===');
           console.log(data);
           console.log('=== Кінець JSON відповіді ===\n');
+          
+          // Перевіряємо чи є помилка в відповіді API
+          if (data.success === false && data.error) {
+            apiErrorMsg.textContent = data.error;
+            apiErrorMsg.style.display = 'block';
+          } else {
+            apiErrorMsg.style.display = 'none';
+          }
         } catch { 
           data = text;
           console.log('Відповідь не є JSON, використовується як текст');
@@ -527,10 +536,9 @@
     initialGrid();
     updateActiveHour(); // Виділяємо поточну годину при завантаженні
     
-    // Застосовуємо поточну чергу до заголовка та джерела
+    // Застосовуємо поточну чергу до заголовка
     function applyQueue() {
       API_URL = `https://xain.in.ua/api/blackout.php?queue=${currentQueue}`;
-      if (sourceCodeEl) sourceCodeEl.textContent = API_URL;
       if (titleEl) titleEl.textContent = `Графік відключень — черга ${currentQueue}`;
       document.title = `Графік ${currentQueue} — 24 години`;
     }
