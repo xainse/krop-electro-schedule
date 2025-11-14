@@ -28,3 +28,6 @@ npm-debug.log*
 # Cache files
 api/cache/
 
+# Log files
+api/logs/
+

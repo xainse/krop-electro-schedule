@@ -10,11 +10,26 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Фіксуємо час початку запиту для вимірювання швидкості відповіді
+$startTime = microtime(true);
+
 // Отримуємо параметр queue
 $queue = isset($_GET['queue']) ? trim($_GET['queue']) : '';
 
 // Валідація параметра queue (формат X.X)
 if (!preg_match('/^\d+\.\d+$/', $queue)) {
+    $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+    
+    // Логуємо невалідний запит
+    logRequest([
+        'queue' => $queue,
+        'source' => 'invalid',
+        'response_time_ms' => round($responseTime, 2),
+        'success' => false,
+        'ip' => getClientIp(),
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+    ]);
+    
     http_response_code(400);
     echo json_encode([
         'success' => false,
@@ -25,6 +40,75 @@ if (!preg_match('/^\d+\.\d+$/', $queue)) {
 
 $sourceUrl = 'https://kiroe.com.ua/electricity-blackout';
 const CACHE_TTL = 600; // 10 хвилин в секундах
+
+/**
+ * Повертає шлях до файлу логу для поточної дати
+ * @return string Шлях до файлу логу
+ */
+function getLogPath() {
+    $logsDir = __DIR__ . '/logs';
+    // Створюємо папку logs якщо її немає
+    if (!is_dir($logsDir)) {
+        @mkdir($logsDir, 0755, true);
+    }
+    $date = date('Y-m-d');
+    return $logsDir . '/blackout_' . $date . '.log';
+}
+
+/**
+ * Отримує IP адресу клієнта
+ * @return string IP адреса
+ */
+function getClientIp() {
+    $ipKeys = ['HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_FORWARDED', 'HTTP_X_CLUSTER_CLIENT_IP', 'HTTP_FORWARDED_FOR', 'HTTP_FORWARDED'];
+    
+    // Спочатку шукаємо публічні IP в заголовках
+    foreach ($ipKeys as $key) {
+        if (array_key_exists($key, $_SERVER) === true) {
+            foreach (explode(',', $_SERVER[$key]) as $ip) {
+                $ip = trim($ip);
+                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                    return $ip;
+                }
+            }
+        }
+    }
+    
+    // Якщо не знайдено публічний IP, повертаємо REMOTE_ADDR (може бути приватним)
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+}
+
+/**
+ * Логує запит до API
+ * @param array $data Дані для логування
+ * @return void
+ */
+function logRequest($data) {
+    $logFile = getLogPath();
+    
+    // Форматуємо timestamp з мілісекундами
+    $timestamp = date('Y-m-d H:i:s') . '.' . str_pad((int)(microtime(true) * 1000) % 1000, 3, '0', STR_PAD_LEFT);
+    
+    $logEntry = [
+        'timestamp' => $timestamp,
+        'queue' => $data['queue'] ?? '',
+        'source' => $data['source'] ?? 'unknown',
+        'response_time_ms' => $data['response_time_ms'] ?? 0,
+        'success' => $data['success'] ?? false,
+        'ip' => $data['ip'] ?? '',
+        'user_agent' => $data['user_agent'] ?? ''
+    ];
+    
+    $jsonLine = json_encode($logEntry, JSON_UNESCAPED_UNICODE) . "\n";
+    
+    // Спробуємо записати лог, але не зупиняємо роботу якщо не вдалося
+    @file_put_contents($logFile, $jsonLine, FILE_APPEND | LOCK_EX);
+    
+    // Встановлюємо права доступу для файлу
+    if (file_exists($logFile)) {
+        @chmod($logFile, 0644);
+    }
+}
 
 /**
  * Повертає шлях до файлу кешу
@@ -231,6 +315,9 @@ function fetchUrl($url) {
 // Отримуємо шлях до файлу кешу
 $cacheFile = getCachePath();
 
+// Відстежуємо джерело даних (cache або site)
+$dataSource = 'cache';
+
 // Перевіряємо чи кеш актуальний
 $cacheData = null;
 if (isCacheValid($cacheFile)) {
@@ -239,10 +326,23 @@ if (isCacheValid($cacheFile)) {
 
 // Якщо кеш не актуальний або відсутній - завантажуємо дані з сайту
 if ($cacheData === false || !isset($cacheData['queues'])) {
+    $dataSource = 'site';
     $html = fetchUrl($sourceUrl);
     
     // Перевірка чи вдалося завантажити сторінку
     if ($html === false) {
+        $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+        
+        // Логуємо помилку
+        logRequest([
+            'queue' => $queue,
+            'source' => $dataSource,
+            'response_time_ms' => round($responseTime, 2),
+            'success' => false,
+            'ip' => getClientIp(),
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+        ]);
+        
         http_response_code(404);
         echo json_encode([
             'success' => false,
@@ -264,6 +364,18 @@ if ($cacheData === false || !isset($cacheData['queues'])) {
     $infoPopup = $xpath->query("//*[@id='info_popup']")->item(0);
     
     if (!$infoPopup) {
+        $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+        
+        // Логуємо помилку
+        logRequest([
+            'queue' => $queue,
+            'source' => $dataSource,
+            'response_time_ms' => round($responseTime, 2),
+            'success' => false,
+            'ip' => getClientIp(),
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+        ]);
+        
         http_response_code(404);
         echo json_encode([
             'success' => false,
@@ -278,6 +390,18 @@ if ($cacheData === false || !isset($cacheData['queues'])) {
     $bodyDesc = $xpath->query(".//*[contains(@class, 'fancybox_body_desc')]", $infoPopup)->item(0);
     
     if (!$bodyDesc) {
+        $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+        
+        // Логуємо помилку
+        logRequest([
+            'queue' => $queue,
+            'source' => $dataSource,
+            'response_time_ms' => round($responseTime, 2),
+            'success' => false,
+            'ip' => getClientIp(),
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+        ]);
+        
         http_response_code(404);
         echo json_encode([
             'success' => false,
@@ -309,6 +433,19 @@ $schedule = '';
 if (isset($cacheData['queues'][$queue])) {
     $schedule = $cacheData['queues'][$queue];
 }
+
+// Вимірюємо час виконання запиту
+$responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+
+// Логуємо успішний запит
+logRequest([
+    'queue' => $queue,
+    'source' => $dataSource,
+    'response_time_ms' => round($responseTime, 2),
+    'success' => true,
+    'ip' => getClientIp(),
+    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+]);
 
 // Повертаємо результат
 echo json_encode([
