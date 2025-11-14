@@ -107,6 +107,15 @@ button:active {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2), 0 1px 0 rgba(0, 0, 0, .03) inset, 0 1px 3px rgba(0, 0, 0, .05);
 }
 
+/* Стилі для півгодинних періодів */
+.cell.half-left-off {
+  background: linear-gradient(to right, var(--off-bg) 50%, var(--on-bg) 50%) !important;
+}
+
+.cell.half-right-off {
+  background: linear-gradient(to right, var(--on-bg) 50%, var(--off-bg) 50%) !important;
+}
+
 .hour {
   font-size: 12px;
   opacity: .9;

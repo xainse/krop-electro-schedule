@@ -67,7 +67,7 @@
       <div id="grid" class="grid" aria-label="Сітка станів на 24 години"></div>
     </div>
     <p class="meta" style="margin-top:10px">
-      Джерело: <code>https://gordovoy.net/blackout.php?queue=1.1</code>
+      Джерело: <code>https://xain.in.ua/api/blackout.php?queue=1.1</code>
       <span style="margin-left: 12px;">
           <a href="https://github.com/xainse/krop-electro-schedule/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Версія:</a> <span id="version">—</span></span>
     </p>
@@ -85,14 +85,14 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.16';
+    const VERSION = '1.17';
     
     const titleEl = document.querySelector('.title');
     const sourceCodeEl = document.querySelector('p.meta code');
     const queueSelect = document.getElementById('queueSelect');
     let currentQueue = localStorage.getItem('queue') || '1.1';
     queueSelect.value = currentQueue;
-    let API_URL = `https://gordovoy.net/blackout.php?queue=${currentQueue}`;
+    let API_URL = `https://xain.in.ua/api/blackout.php?queue=${currentQueue}`;
     const gridEl = document.getElementById('grid');
     const updatedMeta = document.getElementById('updatedMeta');
     const errorMsg = document.getElementById('errorMsg');
@@ -158,10 +158,72 @@
       return hours;
     }
 
-    // Гнучкий парсер відповіді API → масив із 24 елементів: true (є), false (відключено), null (невідомо)
+    // Парсер півгодинних періодів з формату "HH:MM-HH:MM"
+    // Повертає масив з 48 елементів (кожен = 30 хвилин)
+    function parseHalfHourSchedule(schedule) {
+      // За замовчуванням електрика є (true) для всіх 48 півгодин
+      const periods = Array(48).fill(true);
+      
+      // Розбиваємо рядок по комах і обробляємо кожен діапазон
+      const ranges = schedule.split(',').map(s => s.trim()).filter(Boolean);
+      
+      for (const range of ranges) {
+        // Шукаємо формат "HH:MM-HH:MM" (наприклад "06:00-08:00" або "10:00-11:30")
+        const match = range.match(/^(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})$/);
+        if (match) {
+          const startHour = parseInt(match[1], 10);
+          const startMin = parseInt(match[2], 10);
+          const endHour = parseInt(match[3], 10);
+          const endMin = parseInt(match[4], 10);
+          
+          // Конвертуємо час в хвилини від початку доби
+          const startMinutes = startHour * 60 + startMin;
+          const endMinutes = endHour * 60 + endMin;
+          
+          // Конвертуємо в індекси півгодин (кожен індекс = 30 хвилин)
+          // Індекс 0 = 00:00-00:30, індекс 1 = 00:30-01:00, ...
+          const startIndex = Math.floor(startMinutes / 30);
+          const endIndex = Math.ceil(endMinutes / 30);
+          
+          // Позначаємо відключені періоди як false
+          // Використовуємо Math.min(endIndex, 48) для обробки випадку 24:00
+          for (let i = startIndex; i < Math.min(endIndex, 48); i++) {
+            periods[i] = false;
+          }
+        } else {
+          // Спробуємо старий формат "HH-HH" для сумісності
+          const oldMatch = range.match(/^(\d{1,2})\s*[-–]\s*(\d{1,2})$/);
+          if (oldMatch) {
+            const start = parseInt(oldMatch[1], 10);
+            const end = parseInt(oldMatch[2], 10);
+            
+            if (start >= 0 && start <= 24 && end >= 0 && end <= 24) {
+              // Конвертуємо години в індекси півгодин
+              const startIndex = start * 2;
+              const endIndex = Math.min(end * 2, 48);
+              
+              for (let i = startIndex; i < endIndex; i++) {
+                periods[i] = false;
+              }
+            }
+          }
+        }
+      }
+      
+      return periods;
+    }
+
+    // Гнучкий парсер відповіді API → масив із 48 елементів (півгодинні періоди): true (є), false (відключено), null (невідомо)
     function normalizeTo24(data) {
-      // 1) Якщо є schedule з діапазонами годин (наприклад: "02-04, 06-08, 10-13")
+      // 1) Якщо є schedule з діапазонами з хвилинами (наприклад: "06:00-08:00, 10:00-11:30")
       if (data?.schedule && typeof data.schedule === 'string') {
+        // Перевіряємо чи є хвилини в форматі (наявність ":")
+        if (data.schedule.includes(':')) {
+          statusMsg.textContent = 'Формат API: schedule з півгодинними періодами';
+          return parseHalfHourSchedule(data.schedule);
+        }
+        
+        // Старий формат без хвилин (для сумісності)
         statusMsg.textContent = 'Формат API: schedule з діапазонами годин';
         // За замовчуванням електрика є (true)
         const hours = Array(24).fill(true);
@@ -188,8 +250,22 @@
           }
         }
         
-        return hours;
+        // Конвертуємо 24-годинний масив в 48 півгодинних (для сумісності)
+        const periods = [];
+        for (let h = 0; h < 24; h++) {
+          periods.push(hours[h], hours[h]); // Кожна година = 2 півгодини з однаковим станом
+        }
+        return periods;
       }
+
+      // Допоміжна функція для конвертації 24-годинного масиву в 48 півгодинних
+      const convert24To48 = (hours24) => {
+        const periods48 = [];
+        for (let h = 0; h < 24; h++) {
+          periods48.push(hours24[h], hours24[h]); // Кожна година = 2 півгодини з однаковим станом
+        }
+        return periods48;
+      };
 
       // 2) Якщо є масив із 24 значень
       const tryArrays = [
@@ -197,7 +273,7 @@
       ].find(a => Array.isArray(a) && a.length === 24);
       if (tryArrays) {
         statusMsg.textContent = 'Формат API: 24-годинний масив';
-        return tryArrays.map(v => {
+        const hours24 = tryArrays.map(v => {
           // Поширені випадки: 1/0, true/false, "on"/"off", "power"/"blackout"
           if (typeof v === 'boolean') return v;
           if (typeof v === 'number') return v > 0 ? false : true; // припущення: 1 = відключено
@@ -206,21 +282,26 @@
           if (['off', 'blackout', 'no', 'n', 'false', '0', 'red'].includes(s)) return false;
           return null;
         });
+        return convert24To48(hours24);
       }
 
       // 3) Якщо є перелік годин відключення (індекси 0..23 або "HH")
       const offList = data?.off_hours || data?.outage_hours || data?.blackout_hours;
       if (Array.isArray(offList)) {
         statusMsg.textContent = 'Формат API: список годин відключення';
-        const set = new Set(offList.map(x => (typeof x === 'string' && x.includes(':')) ? parseInt(x.split(':')[0], 10) : parseInt(x, 10)));
-        return Array.from({ length: 24 }, (_, h) => set.has(h) ? false : true);
+        const hours24 = Array.from({ length: 24 }, (_, h) => {
+          const set = new Set(offList.map(x => (typeof x === 'string' && x.includes(':')) ? parseInt(x.split(':')[0], 10) : parseInt(x, 10)));
+          return set.has(h) ? false : true;
+        });
+        return convert24To48(hours24);
       }
 
       // 4) Якщо інтервали
       const intervals = data?.intervals || data?.outages || data?.blackouts;
       if (Array.isArray(intervals) && intervals.length) {
         statusMsg.textContent = 'Формат API: інтервали часу';
-        return hoursFromIntervals(intervals);
+        const hours24 = hoursFromIntervals(intervals);
+        return convert24To48(hours24);
       }
 
       // 5) Якщо прийшов рядок "HH:MM-HH:MM; ..."
@@ -231,32 +312,63 @@
           const m = p.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
           return m ? { start: m[1], end: m[2], off: true } : null;
         }).filter(Boolean);
-        if (intervals.length) return hoursFromIntervals(intervals);
+        if (intervals.length) {
+          const hours24 = hoursFromIntervals(intervals);
+          return convert24To48(hours24);
+        }
       }
 
       // Невідомий формат
       statusMsg.textContent = 'Невідомий формат відповіді API';
-      return Array(24).fill(null);
+      return Array(48).fill(null);
     }
 
-    function render(hours) {
+    function render(periods) {
+      // periods - масив з 48 елементів (півгодинні періоди)
       for (let h = 0; h < 24; h++) {
         const cell = gridEl.querySelector(`.cell[data-h="${h}"]`);
         if (!cell) continue;
-        const val = hours[h];
-        if (val === true) { // електрика є
+        
+        // Отримуємо два півгодинні періоди для цієї години
+        const firstHalf = periods[h * 2];     // Перша півгодина (HH:00-HH:30)
+        const secondHalf = periods[h * 2 + 1]; // Друга півгодина (HH:30-HH+1:00)
+        
+        // Видаляємо попередні класи півгодин
+        cell.classList.remove('half-left-off', 'half-right-off');
+        
+        // Визначаємо стан клітинки на основі двох півгодин
+        if (firstHalf === true && secondHalf === true) {
+          // Обидва періоди true → повністю жовта
           cell.style.background = 'var(--on-bg)';
           cell.style.color = 'var(--on-fg)';
           cell.querySelector('.emoji').textContent = '⚡';
           cell.querySelector('.sr-only')?.remove();
           cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Є електрика</span>');
-        } else if (val === false) { // відключено
+        } else if (firstHalf === false && secondHalf === false) {
+          // Обидва періоди false → повністю темно-сіра
           cell.style.background = 'var(--off-bg)';
           cell.style.color = 'var(--off-fg)';
           cell.querySelector('.emoji').textContent = '🌑';
           cell.querySelector('.sr-only')?.remove();
           cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Відключено</span>');
-        } else { // невідомо
+        } else if (firstHalf === false && secondHalf === true) {
+          // Перший false, другий true → ліва половина темно-сіра, права жовта
+          cell.style.background = 'linear-gradient(to right, var(--off-bg) 50%, var(--on-bg) 50%)';
+          cell.style.color = 'var(--off-fg)';
+          cell.classList.add('half-left-off');
+          cell.querySelector('.emoji').textContent = '🌑⚡';
+          cell.querySelector('.sr-only')?.remove();
+          cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Відключено першу півгодину</span>');
+        } else if (firstHalf === true && secondHalf === false) {
+          // Перший true, другий false → ліва половина жовта, права темно-сіра
+          cell.style.background = 'linear-gradient(to right, var(--on-bg) 50%, var(--off-bg) 50%)';
+          cell.style.color = 'var(--on-fg)';
+          cell.classList.add('half-right-off');
+          cell.querySelector('.emoji').textContent = '⚡🌑';
+          cell.querySelector('.sr-only')?.remove();
+          cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Відключено другу півгодину</span>');
+        } else {
+          // Невідомо (якщо один з періодів null)
           cell.style.background = 'var(--unknown-bg)';
           cell.style.color = 'var(--unknown-fg)';
           cell.querySelector('.emoji').textContent = '…';
@@ -382,21 +494,21 @@
         }
         
         // Обробляємо дані
-        const hours = normalizeTo24(data);
-        console.log('=== Результат normalizeTo24 (24 години) ===');
-        console.log(hours);
+        const periods = normalizeTo24(data);
+        console.log('=== Результат normalizeTo24 (48 півгодинних періодів) ===');
+        console.log(periods);
         console.log('=== Кінець результату ===\n');
         
         // Перевіряємо чи змінився графік
-        if (hasScheduleChanged(previousHours, hours)) {
+        if (hasScheduleChanged(previousHours, periods)) {
           // Показуємо нотифікацію якщо графік змінився
           showNotification('Power schedule updated');
         }
         
         // Зберігаємо поточний графік як попередній
-        previousHours = hours;
+        previousHours = periods;
         
-        render(hours);
+        render(periods);
         const ts = new Date();
         updatedMeta.textContent = 'Останнє оновлення: ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         statusMsg.textContent = 'Готово';
@@ -405,7 +517,7 @@
         errorMsg.textContent = userMessage;
         errorMsg.style.display = 'block';
         statusMsg.textContent = 'Показано невідомі значення';
-        render(Array(24).fill(null));
+        render(Array(48).fill(null));
         console.error('Помилка завантаження даних:', err);
       }
     }
@@ -417,7 +529,7 @@
     
     // Застосовуємо поточну чергу до заголовка та джерела
     function applyQueue() {
-      API_URL = `https://gordovoy.net/blackout.php?queue=${currentQueue}`;
+      API_URL = `https://xain.in.ua/api/blackout.php?queue=${currentQueue}`;
       if (sourceCodeEl) sourceCodeEl.textContent = API_URL;
       if (titleEl) titleEl.textContent = `Графік відключень — черга ${currentQueue}`;
       document.title = `Графік ${currentQueue} — 24 години`;
