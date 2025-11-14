@@ -50,6 +50,13 @@ body {
   color: var(--muted)
 }
 
+.update-warning {
+  font-size: 14px;
+  color: #dc2626;
+  margin-top: 8px;
+  width: 100%;
+}
+
 .controls {
   display: flex;
   gap: 8px;
