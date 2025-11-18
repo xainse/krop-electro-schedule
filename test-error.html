@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Тест помилки API</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    .test-controls {
+      background: #f0f0f0;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background: #3b82f6;
+      color: white;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    .info {
+      background: #e0f2fe;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Тест функції відображення застарілих даних</h1>
+  
+  <div class="test-controls">
+    <h2>Інструкції:</h2>
+    <ol>
+      <li>Відкрийте основний файл: <a href="index.html" target="_blank">index.html</a></li>
+      <li>Дозвольте сторінці завантажити дані один раз (щоб зберегти їх)</li>
+      <li>Відкрийте консоль браузера (F12)</li>
+      <li>Виконайте один з наступних варіантів:</li>
+    </ol>
+    
+    <h3>Варіант 1: Заблокувати запит через DevTools</h3>
+    <ol>
+      <li>Відкрийте вкладку <strong>Network</strong> в DevTools</li>
+      <li>Знайдіть запит до <code>blackout.php</code></li>
+      <li>Клікніть правою кнопкою → <strong>Block request URL</strong></li>
+      <li>Натисніть кнопку "Оновити" на сторінці</li>
+    </ol>
+    
+    <h3>Варіант 2: Змінити URL через консоль</h3>
+    <p>Виконайте в консолі браузера:</p>
+    <pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 5px; overflow-x: auto;">
+// Змінити URL на неіснуючий
+API_URL = 'https://xain.in.ua/api/blackout-ERROR.php?queue=1.1';
+// Потім натисніть кнопку "Оновити"
+    </pre>
+    
+    <h3>Варіант 3: Симулювати помилку через консоль</h3>
+    <p>Виконайте в консолі браузера:</p>
+    <pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 5px; overflow-x: auto;">
+// Отримати поточні дані
+const testData = lastSuccessfulData;
+const testTime = lastSuccessfulTime;
+
+// Очистити дані (симулювати перше завантаження)
+lastSuccessfulData = null;
+lastSuccessfulTime = null;
+
+// Спробувати завантажити з неіснуючого URL
+API_URL = 'https://xain.in.ua/api/blackout-ERROR.php?queue=1.1';
+load();
+
+// Після помилки - повернути дані
+setTimeout(() => {
+  lastSuccessfulData = testData;
+  lastSuccessfulTime = testTime;
+  load(); // Тепер має показати старі дані
+}, 1000);
+    </pre>
+  </div>
+  
+  <div class="info">
+    <h3>Що перевірити:</h3>
+    <ul>
+      <li>✅ При помилці завантаження показуються останні успішні дані (не "невідомо")</li>
+      <li>✅ З'являється червоне повідомлення про застарілі дані</li>
+      <li>✅ В повідомленні вказано час останнього оновлення та вік даних</li>
+      <li>✅ Текст "Останнє оновлення" стає червоним з позначкою "(застарілі)"</li>
+      <li>✅ Дані зберігаються в localStorage (перезавантажте сторінку - дані мають залишитися)</li>
+    </ul>
+  </div>
+  
+  <div style="margin-top: 30px;">
+    <a href="index.html">← Повернутися до основної сторінки</a>
+  </div>
+</body>
+</html>
+

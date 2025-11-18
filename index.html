@@ -85,7 +85,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.23';
+    const VERSION = '1.26';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -104,6 +104,10 @@
     
     // Зберігаємо попередній графік для порівняння
     let previousHours = null;
+    
+    // Зберігаємо останні успішно завантажені дані та час оновлення
+    let lastSuccessfulData = null;
+    let lastSuccessfulTime = null;
 
     // Малюємо 24 порожні клітинки одразу
     function initialGrid() {
@@ -462,7 +466,7 @@
 
     async function load() {
       errorMsg.style.display = 'none';
-      apiErrorMsg.style.display = 'none';
+      // Не приховуємо apiErrorMsg тут, щоб зберегти повідомлення про застарілі дані під час завантаження
       statusMsg.textContent = 'Завантаження…';
       try {
         // Викликаємо API напряму (без proxy)
@@ -486,12 +490,35 @@
           
           // Перевіряємо чи є помилка в відповіді API
           if (data.success === false && data.error) {
-            apiErrorMsg.textContent = data.error;
-            apiErrorMsg.style.display = 'block';
+            // Якщо є помилка в відповіді API, але є збережені дані - показуємо їх
+            if (lastSuccessfulData !== null) {
+              render(lastSuccessfulData);
+              const timeStr = lastSuccessfulTime ? lastSuccessfulTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+              apiErrorMsg.style.display = 'none'; // Приховуємо повідомлення про помилку
+              updatedMeta.textContent = 'Останнє оновлення: ' + timeStr + ' (⚠️ застарілі)';
+              updatedMeta.style.color = '#dc2626';
+              statusMsg.textContent = 'Показано останні доступні дані';
+              return; // Виходимо, не оновлюючи дані
+            } else {
+              apiErrorMsg.textContent = data.error;
+              apiErrorMsg.style.display = 'block';
+            }
           } else {
             apiErrorMsg.style.display = 'none';
+            // Повертаємо нормальний колір для updatedMeta при успішному оновленні
+            updatedMeta.style.color = '';
           }
-        } catch { 
+        } catch (parseErr) { 
+          // Якщо не вдалося розпарсити JSON, але є збережені дані - показуємо їх
+          if (lastSuccessfulData !== null) {
+            render(lastSuccessfulData);
+            const timeStr = lastSuccessfulTime ? lastSuccessfulTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+            apiErrorMsg.style.display = 'none'; // Приховуємо повідомлення про помилку
+            updatedMeta.textContent = 'Останнє оновлення: ' + timeStr + ' (⚠️ застарілі)';
+            updatedMeta.style.color = '#dc2626';
+            statusMsg.textContent = 'Показано останні доступні дані';
+            return; // Виходимо, не оновлюючи дані
+          }
           data = text;
           console.log('Відповідь не є JSON, використовується як текст');
         }
@@ -514,14 +541,46 @@
         render(periods);
         const ts = new Date();
         updatedMeta.textContent = 'Останнє оновлення: ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        // Повертаємо нормальний колір для updatedMeta при успішному оновленні
+        updatedMeta.style.color = '';
         statusMsg.textContent = 'Готово';
+        
+        // Зберігаємо успішно завантажені дані
+        lastSuccessfulData = periods;
+        lastSuccessfulTime = ts;
+        
+        // Зберігаємо дані в localStorage для використання при перезавантаженні
+        try {
+          localStorage.setItem('lastSuccessfulData', JSON.stringify(periods));
+          localStorage.setItem('lastSuccessfulTime', ts.toISOString());
+        } catch (e) {
+          console.warn('Не вдалося зберегти дані в localStorage:', e);
+        }
+        
+        // Приховуємо повідомлення про застарілі дані, якщо воно було показано
+        apiErrorMsg.style.display = 'none';
       } catch (err) {
-        const userMessage = 'Не вдалося отримати дані з API. ' + err.message;
-        errorMsg.textContent = userMessage;
-        errorMsg.style.display = 'block';
-        statusMsg.textContent = 'Показано невідомі значення';
-        render(Array(48).fill(null));
         console.error('Помилка завантаження даних:', err);
+        
+        // Якщо є збережені дані - показуємо їх замість невідомих значень
+        if (lastSuccessfulData !== null) {
+          render(lastSuccessfulData);
+          
+          // Оновлюємо текст останнього оновлення з індикацією застарілості
+          const timeStr = lastSuccessfulTime ? lastSuccessfulTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+          apiErrorMsg.style.display = 'none'; // Приховуємо повідомлення про помилку
+          updatedMeta.textContent = 'Останнє оновлення: ' + timeStr + ' (⚠️ застарілі)';
+          updatedMeta.style.color = '#dc2626';
+          
+          statusMsg.textContent = 'Показано останні доступні дані';
+        } else {
+          // Якщо немає збережених даних - показуємо помилку як раніше
+          const userMessage = 'Не вдалося отримати дані з API. ' + err.message;
+          errorMsg.textContent = userMessage;
+          errorMsg.style.display = 'block';
+          statusMsg.textContent = 'Показано невідомі значення';
+          render(Array(48).fill(null));
+        }
       }
     }
 
@@ -529,6 +588,24 @@
     versionEl.textContent = VERSION;
     initialGrid();
     updateActiveHour(); // Виділяємо поточну годину при завантаженні
+    
+    // Завантажуємо збережені дані з localStorage при ініціалізації
+    try {
+      const savedData = localStorage.getItem('lastSuccessfulData');
+      const savedTime = localStorage.getItem('lastSuccessfulTime');
+      if (savedData) {
+        lastSuccessfulData = JSON.parse(savedData);
+        if (savedTime) {
+          lastSuccessfulTime = new Date(savedTime);
+          // Відображаємо збережені дані одразу, якщо вони є
+          render(lastSuccessfulData);
+          const timeStr = lastSuccessfulTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          updatedMeta.textContent = 'Останнє оновлення: ' + timeStr + ' (завантажується...)';
+        }
+      }
+    } catch (e) {
+      console.warn('Не вдалося завантажити дані з localStorage:', e);
+    }
     
     // Застосовуємо поточну чергу до заголовка
     function applyQueue() {
