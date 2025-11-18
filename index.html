@@ -85,7 +85,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.22';
+    const VERSION = '1.23';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -460,23 +460,16 @@
       }
     }
 
-    // Функція для завантаження через CORS proxy (corsproxy.io)
-    async function fetchWithProxy(url) {
-      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-      const res = await fetch(proxyUrl, { cache: 'no-store' });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      }
-      return res;
-    }
-
     async function load() {
       errorMsg.style.display = 'none';
       apiErrorMsg.style.display = 'none';
       statusMsg.textContent = 'Завантаження…';
       try {
-        // Використовуємо corsproxy.io для обходу CORS
-        const res = await fetchWithProxy(API_URL);
+        // Викликаємо API напряму (без proxy)
+        const res = await fetch(API_URL, { cache: 'no-store' });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        }
         const text = await res.text();
         
         // Виводимо сиру відповідь в консоль

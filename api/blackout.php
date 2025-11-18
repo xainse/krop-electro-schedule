@@ -8,7 +8,19 @@
  * Використовує кешування на 10 хвилин для зменшення навантаження на джерело
  */
 
+// CORS заголовки для дозволу прямого виклику з браузера
+// ВАЖЛИВО: ці заголовки мають бути встановлені ДО будь-якого виводу
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Accept');
+header('Access-Control-Max-Age: 86400'); // Кешування preflight запитів на 24 години
 header('Content-Type: application/json; charset=utf-8');
+
+// Обробка preflight запитів (OPTIONS)
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
 // Фіксуємо час початку запиту для вимірювання швидкості відповіді
 $startTime = microtime(true);
