@@ -53,6 +53,7 @@
         <span class="meta" id="updatedMeta">Останнє оновлення: —</span>
       </div>
       <div id="apiErrorMsg" class="update-warning" style="display:none;"></div>
+      <div id="emergencyMsg" class="emergency-warning" style="display:none;"></div>
     </div>
 
     <div class="card">
@@ -85,11 +86,12 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.26';
+    const VERSION = '1.27';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
     const apiErrorMsg = document.getElementById('apiErrorMsg');
+    const emergencyMsg = document.getElementById('emergencyMsg');
     let currentQueue = localStorage.getItem('queue') || '1.1';
     queueSelect.value = currentQueue;
     let API_URL = `https://xain.in.ua/api/blackout.php?queue=${currentQueue}`;
@@ -466,6 +468,7 @@
 
     async function load() {
       errorMsg.style.display = 'none';
+      emergencyMsg.style.display = 'none';
       // Не приховуємо apiErrorMsg тут, щоб зберегти повідомлення про застарілі дані під час завантаження
       statusMsg.textContent = 'Завантаження…';
       try {
@@ -508,6 +511,21 @@
             // Повертаємо нормальний колір для updatedMeta при успішному оновленні
             updatedMeta.style.color = '';
           }
+          
+          // Перевіряємо чи є активний графік аварійних відключень (ГАВ)
+          // Перевіряємо як boolean true, так і рядок "true" для сумісності
+          console.log('=== Перевірка emergency_mode ===');
+          console.log('emergency_mode:', data.emergency_mode);
+          console.log('Тип:', typeof data.emergency_mode);
+          if (data.emergency_mode === true || data.emergency_mode === 'true' || data.emergency_mode === 1) {
+            console.log('ГАВ активний - показуємо повідомлення');
+            emergencyMsg.textContent = '⚠️ Увага! На даний час діє графік аварійних відключень (ГАВ). Час відключення невідомий.';
+            emergencyMsg.style.display = 'block';
+          } else {
+            console.log('ГАВ неактивний - приховуємо повідомлення');
+            emergencyMsg.style.display = 'none';
+          }
+          console.log('=== Кінець перевірки emergency_mode ===\n');
         } catch (parseErr) { 
           // Якщо не вдалося розпарсити JSON, але є збережені дані - показуємо їх
           if (lastSuccessfulData !== null) {

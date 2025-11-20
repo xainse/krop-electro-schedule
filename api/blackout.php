@@ -235,6 +235,44 @@ function normalizeSchedule($schedule) {
 }
 
 /**
+ * Перевіряє чи є повідомлення про графік аварійних відключень (ГАВ) в HTML
+ * @param string $html HTML код сторінки
+ * @return bool true якщо ГАВ активний, false інакше
+ */
+function checkEmergencyMode($html) {
+    // Шукаємо текст про "графік аварійних відключень" або "ГАВ"
+    // Перевіряємо різні варіанти написання та комбінації
+    $patterns = [
+        // Точні збіги про ГАВ
+        '/графік\s+аварійних\s+відключень/i',
+        '/графік\s*аварійних\s*відключень/i',
+        '/ГАВ/i',
+        // Комбінації з "введено в дію"
+        '/введено\s+в\s+дію\s+графік\s+аварійних/i',
+        '/введено\s+в\s+дію\s+графік\s*аварійних/i',
+        // Інші варіанти
+        '/аварійних\s+відключень/i',
+        '/аварійного\s+відключення/i',
+        // Шукаємо також в тексті повідомлень про важливу інформацію
+        '/Увага.*аварійних/i',
+        '/Увага.*ГАВ/i'
+    ];
+    
+    foreach ($patterns as $pattern) {
+        if (preg_match($pattern, $html)) {
+            return true;
+        }
+    }
+    
+    // Додаткова перевірка: шукаємо комбінацію "графік" + "аварій" в межах 50 символів
+    if (preg_match('/графік.{0,50}аварій|аварій.{0,50}графік/i', $html)) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
  * Парсить всі черги з HTML тексту
  * @param string $text Текст з графіками черг
  * @return array Асоціативний масив ['1.1' => 'schedule', '1.2' => 'schedule', ...]
@@ -332,12 +370,14 @@ $dataSource = 'cache';
 
 // Перевіряємо чи кеш актуальний
 $cacheData = null;
-if (isCacheValid($cacheFile)) {
+// Якщо передано параметр force_refresh=1, примусово оновлюємо дані з сайту
+$forceRefresh = isset($_GET['force_refresh']) && $_GET['force_refresh'] == '1';
+if (!$forceRefresh && isCacheValid($cacheFile)) {
     $cacheData = loadCache($cacheFile);
 }
 
 // Якщо кеш не актуальний або відсутній - завантажуємо дані з сайту
-if ($cacheData === false || !isset($cacheData['queues'])) {
+if ($cacheData === false || !isset($cacheData['queues']) || $forceRefresh) {
     $dataSource = 'site';
     $html = fetchUrl($sourceUrl);
     
@@ -427,13 +467,18 @@ if ($cacheData === false || !isset($cacheData['queues'])) {
     // Отримуємо текстовий вміст
     $text = $bodyDesc->textContent;
     
+    // Перевіряємо чи є повідомлення про ГАВ в HTML
+    // Шукаємо в усьому HTML, а не тільки в bodyDesc, бо повідомлення може бути в іншому місці
+    $emergencyMode = checkEmergencyMode($html);
+    
     // Парсимо всі черги з HTML
     $allQueues = parseAllQueues($text);
     
     // Зберігаємо дані в кеш
     $cacheData = [
         'timestamp' => time(),
-        'queues' => $allQueues
+        'queues' => $allQueues,
+        'emergency_mode' => $emergencyMode
     ];
     
     // Спробуємо зберегти кеш, але не зупиняємо роботу якщо не вдалося
@@ -444,6 +489,15 @@ if ($cacheData === false || !isset($cacheData['queues'])) {
 $schedule = '';
 if (isset($cacheData['queues'][$queue])) {
     $schedule = $cacheData['queues'][$queue];
+}
+
+// Отримуємо стан ГАВ з кешу (за замовчуванням false якщо не встановлено)
+$emergencyMode = isset($cacheData['emergency_mode']) ? (bool)$cacheData['emergency_mode'] : false;
+
+// Тестовий режим: якщо передано параметр test_emergency=1, встановлюємо emergency_mode = true для тестування
+// Це дозволяє протестувати відображення повідомлення про ГАВ на фронтенді
+if (isset($_GET['test_emergency']) && $_GET['test_emergency'] == '1') {
+    $emergencyMode = true;
 }
 
 // Вимірюємо час виконання запиту
@@ -464,6 +518,7 @@ echo json_encode([
     'success' => true,
     'queue' => $queue,
     'schedule' => $schedule,
+    'emergency_mode' => $emergencyMode,
     'updated' => isset($cacheData['timestamp']) ? $cacheData['timestamp'] : null,
     'source' => $sourceUrl
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

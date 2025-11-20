@@ -170,6 +170,18 @@ button:active {
   font-size: 14px;
 }
 
+.emergency-warning {
+  background: #fff4e6;
+  border: 1px solid #ffd89e;
+  color: #c2410c;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-top: 8px;
+  width: 100%;
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
