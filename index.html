@@ -86,7 +86,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.27';
+    const VERSION = '1.28';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -519,7 +519,7 @@
           console.log('Тип:', typeof data.emergency_mode);
           if (data.emergency_mode === true || data.emergency_mode === 'true' || data.emergency_mode === 1) {
             console.log('ГАВ активний - показуємо повідомлення');
-            emergencyMsg.textContent = '⚠️ Увага! На даний час діє графік аварійних відключень (ГАВ). Час відключення невідомий.';
+            emergencyMsg.textContent = '⚠️ Увага! Діє графік аварійних відключень (ГАВ). Нижче показано останній плановий графік для орієнтації, але реальний час відключень може відрізнятися.';
             emergencyMsg.style.display = 'block';
           } else {
             console.log('ГАВ неактивний - приховуємо повідомлення');
