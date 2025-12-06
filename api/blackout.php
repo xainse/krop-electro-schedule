@@ -240,6 +240,22 @@ function normalizeSchedule($schedule) {
  * @return bool true якщо ГАВ активний, false інакше
  */
 function checkEmergencyMode($html) {
+    // Спочатку перевіряємо чи ГАВ скасовано
+    // Якщо знайдено текст про скасування - повертаємо false одразу
+    $cancellationPatterns = [
+        '/дію\s+графіка\s+аварійних\s+відключень\s*\(?\s*ГАВ\s*\)?\s+скасовано/i',
+        '/скасовано\s+дію\s+графіка\s+аварійних\s+відключень/i',
+        '/ГАВ\s+скасовано/i',
+        '/скасовано\s+ГАВ/i',
+        '/графік\s+аварійних\s+відключень\s*\(?\s*ГАВ\s*\)?\s+скасовано/i'
+    ];
+    
+    foreach ($cancellationPatterns as $pattern) {
+        if (preg_match($pattern, $html)) {
+            return false; // ГАВ скасовано
+        }
+    }
+    
     // Шукаємо текст про "графік аварійних відключень" або "ГАВ"
     // Перевіряємо різні варіанти написання та комбінації
     $patterns = [
@@ -368,121 +384,176 @@ $cacheFile = getCachePath();
 // Відстежуємо джерело даних (cache або site)
 $dataSource = 'cache';
 
-// Перевіряємо чи кеш актуальний
+// Завжди завантажуємо кеш якщо він існує (незалежно від TTL)
+// Це гарантує, що дані будуть доступні навіть якщо нові дані не вдалося отримати
 $cacheData = null;
-// Якщо передано параметр force_refresh=1, примусово оновлюємо дані з сайту
-$forceRefresh = isset($_GET['force_refresh']) && $_GET['force_refresh'] == '1';
-if (!$forceRefresh && isCacheValid($cacheFile)) {
+if (file_exists($cacheFile)) {
     $cacheData = loadCache($cacheFile);
 }
 
-// Якщо кеш не актуальний або відсутній - завантажуємо дані з сайту
-if ($cacheData === false || !isset($cacheData['queues']) || $forceRefresh) {
+// Якщо передано параметр force_refresh=1, примусово оновлюємо дані з сайту
+$forceRefresh = isset($_GET['force_refresh']) && $_GET['force_refresh'] == '1';
+
+// Прапорець для відстеження чи вдалося отримати нові дані
+$fetchFailed = false;
+$newDataObtained = false;
+
+// Перевіряємо чи потрібно оновлювати дані
+// Оновлюємо якщо: кеш відсутній, кеш застарілий, або force_refresh
+$needUpdate = false;
+if ($forceRefresh) {
+    $needUpdate = true;
+} elseif ($cacheData === false || !isset($cacheData['queues'])) {
+    $needUpdate = true;
+} elseif (!isCacheValid($cacheFile)) {
+    // Кеш застарілий - намагаємося отримати нові дані, але залишаємо кеш як fallback
+    $needUpdate = true;
+}
+
+// Якщо потрібно оновити - спробуємо завантажити дані з сайту
+if ($needUpdate) {
     $dataSource = 'site';
     $html = fetchUrl($sourceUrl);
     
     // Перевірка чи вдалося завантажити сторінку
+    // Якщо сайт недоступний (kiroe.com.ua не працює) - використовуємо кеш якщо він є
     if ($html === false) {
-        $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+        $fetchFailed = true;
+        // Якщо є кеш - використаємо його, не повертаємо помилку
+        // Це гарантує, що фронтенд завжди отримає дані (навіть застарілі) якщо кеш існує
+        if ($cacheData !== null && isset($cacheData['queues'])) {
+            $dataSource = 'cache';
+            // Продовжуємо виконання з даними з кешу
+        } else {
+            // Кешу немає і дані не отримано - повертаємо помилку
+            $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+            
+            // Логуємо помилку
+            logRequest([
+                'queue' => $queue,
+                'source' => $dataSource,
+                'response_time_ms' => round($responseTime, 2),
+                'success' => false,
+                'ip' => getClientIp(),
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+            ]);
+            
+            http_response_code(404);
+            echo json_encode([
+                'success' => false,
+                'error' => 'Page not available',
+                'queue' => $queue,
+                'source' => $sourceUrl
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            exit;
+        }
+    } else {
+        // HTML отримано, продовжуємо парсинг
+        // Створюємо DOMDocument для парсингу HTML
+        libxml_use_internal_errors(true);
+        $dom = new DOMDocument();
+        @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
+        libxml_clear_errors();
         
-        // Логуємо помилку
-        logRequest([
-            'queue' => $queue,
-            'source' => $dataSource,
-            'response_time_ms' => round($responseTime, 2),
-            'success' => false,
-            'ip' => getClientIp(),
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
-        ]);
+        // Знаходимо елемент з ID info_popup
+        $xpath = new DOMXPath($dom);
+        $infoPopup = $xpath->query("//*[@id='info_popup']")->item(0);
         
-        http_response_code(404);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Page not available',
-            'queue' => $queue,
-            'source' => $sourceUrl
-        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        exit;
+        if (!$infoPopup) {
+            $fetchFailed = true;
+            // Якщо є кеш - використаємо його
+            if ($cacheData !== null && isset($cacheData['queues'])) {
+                $dataSource = 'cache';
+                // Продовжуємо виконання з даними з кешу
+            } else {
+                // Кешу немає - повертаємо помилку
+                $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+                
+                // Логуємо помилку
+                logRequest([
+                    'queue' => $queue,
+                    'source' => $dataSource,
+                    'response_time_ms' => round($responseTime, 2),
+                    'success' => false,
+                    'ip' => getClientIp(),
+                    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                ]);
+                
+                http_response_code(404);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Info popup element not found',
+                    'queue' => $queue,
+                    'source' => $sourceUrl
+                ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+                exit;
+            }
+        } else {
+            // Знаходимо елемент з класом fancybox_body_desc
+            $bodyDesc = $xpath->query(".//*[contains(@class, 'fancybox_body_desc')]", $infoPopup)->item(0);
+            
+            if (!$bodyDesc) {
+                $fetchFailed = true;
+                // Якщо є кеш - використаємо його
+                if ($cacheData !== null && isset($cacheData['queues'])) {
+                    $dataSource = 'cache';
+                    // Продовжуємо виконання з даними з кешу
+                } else {
+                    // Кешу немає - повертаємо помилку
+                    $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+                    
+                    // Логуємо помилку
+                    logRequest([
+                        'queue' => $queue,
+                        'source' => $dataSource,
+                        'response_time_ms' => round($responseTime, 2),
+                        'success' => false,
+                        'ip' => getClientIp(),
+                        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                    ]);
+                    
+                    http_response_code(404);
+                    echo json_encode([
+                        'success' => false,
+                        'error' => 'Schedule content not found',
+                        'queue' => $queue,
+                        'source' => $sourceUrl
+                    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+                    exit;
+                }
+            } else {
+                // Всі перевірки пройдено, парсимо дані
+                // Отримуємо текстовий вміст
+                $text = $bodyDesc->textContent;
+                
+                // Перевіряємо чи є повідомлення про ГАВ в HTML
+                // Шукаємо в усьому HTML, а не тільки в bodyDesc, бо повідомлення може бути в іншому місці
+                $emergencyMode = checkEmergencyMode($html);
+                
+                // Парсимо всі черги з HTML
+                $allQueues = parseAllQueues($text);
+                
+                // Якщо ГАВ активний, але графіки не оновлені (порожній або менше черг) - використовуємо графіки з кешу
+                if ($emergencyMode && (empty($allQueues) || count($allQueues) < count($cacheData['queues'] ?? []))) {
+                    // Використовуємо графіки з кешу, але залишаємо новий emergency_mode
+                    if ($cacheData !== null && isset($cacheData['queues']) && !empty($cacheData['queues'])) {
+                        $allQueues = $cacheData['queues'];
+                    }
+                }
+                
+                // Зберігаємо дані в кеш
+                $cacheData = [
+                    'timestamp' => time(),
+                    'queues' => $allQueues,
+                    'emergency_mode' => $emergencyMode
+                ];
+                
+                // Спробуємо зберегти кеш, але не зупиняємо роботу якщо не вдалося
+                saveCache($cacheFile, $cacheData);
+                $newDataObtained = true;
+            }
+        }
     }
-    
-    // Створюємо DOMDocument для парсингу HTML
-    libxml_use_internal_errors(true);
-    $dom = new DOMDocument();
-    @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-    libxml_clear_errors();
-    
-    // Знаходимо елемент з ID info_popup
-    $xpath = new DOMXPath($dom);
-    $infoPopup = $xpath->query("//*[@id='info_popup']")->item(0);
-    
-    if (!$infoPopup) {
-        $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
-        
-        // Логуємо помилку
-        logRequest([
-            'queue' => $queue,
-            'source' => $dataSource,
-            'response_time_ms' => round($responseTime, 2),
-            'success' => false,
-            'ip' => getClientIp(),
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
-        ]);
-        
-        http_response_code(404);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Info popup element not found',
-            'queue' => $queue,
-            'source' => $sourceUrl
-        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        exit;
-    }
-    
-    // Знаходимо елемент з класом fancybox_body_desc
-    $bodyDesc = $xpath->query(".//*[contains(@class, 'fancybox_body_desc')]", $infoPopup)->item(0);
-    
-    if (!$bodyDesc) {
-        $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
-        
-        // Логуємо помилку
-        logRequest([
-            'queue' => $queue,
-            'source' => $dataSource,
-            'response_time_ms' => round($responseTime, 2),
-            'success' => false,
-            'ip' => getClientIp(),
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
-        ]);
-        
-        http_response_code(404);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Schedule content not found',
-            'queue' => $queue,
-            'source' => $sourceUrl
-        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        exit;
-    }
-    
-    // Отримуємо текстовий вміст
-    $text = $bodyDesc->textContent;
-    
-    // Перевіряємо чи є повідомлення про ГАВ в HTML
-    // Шукаємо в усьому HTML, а не тільки в bodyDesc, бо повідомлення може бути в іншому місці
-    $emergencyMode = checkEmergencyMode($html);
-    
-    // Парсимо всі черги з HTML
-    $allQueues = parseAllQueues($text);
-    
-    // Зберігаємо дані в кеш
-    $cacheData = [
-        'timestamp' => time(),
-        'queues' => $allQueues,
-        'emergency_mode' => $emergencyMode
-    ];
-    
-    // Спробуємо зберегти кеш, але не зупиняємо роботу якщо не вдалося
-    saveCache($cacheFile, $cacheData);
 }
 
 // Отримуємо графік для запитуваної черги
