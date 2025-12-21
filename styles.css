@@ -308,8 +308,8 @@ button:active {
   border-left: 2px solid #3b82f6;
   border-right: 2px solid #3b82f6;
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
-  border-top: 0;
-  border-bottom: 0;
+  border-top: 1px solid var(--ring);
+  border-bottom: 1px solid var(--ring);
 }
 
 .overview-table td.cell-data.state-on {
