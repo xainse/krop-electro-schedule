@@ -25,29 +25,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // Фіксуємо час початку запиту для вимірювання швидкості відповіді
 $startTime = microtime(true);
 
+// Перевіряємо чи запитується всі черги
+$requestAll = isset($_GET['all']) && $_GET['all'] == '1';
+
 // Отримуємо параметр queue
 $queue = isset($_GET['queue']) ? trim($_GET['queue']) : '';
 
-// Валідація параметра queue (формат X.X)
-if (!preg_match('/^\d+\.\d+$/', $queue)) {
-    $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
-    
-    // Логуємо невалідний запит
-    logRequest([
-        'queue' => $queue,
-        'source' => 'invalid',
-        'response_time_ms' => round($responseTime, 2),
-        'success' => false,
-        'ip' => getClientIp(),
-        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
-    ]);
-    
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Invalid queue parameter. Expected format: X.X (e.g., 2.2)'
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    exit;
+// Якщо запитується всі черги, пропускаємо валідацію queue
+if (!$requestAll) {
+    // Валідація параметра queue (формат X.X)
+    if (!preg_match('/^\d+\.\d+$/', $queue)) {
+        $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+        
+        // Логуємо невалідний запит
+        logRequest([
+            'queue' => $queue,
+            'source' => 'invalid',
+            'response_time_ms' => round($responseTime, 2),
+            'success' => false,
+            'ip' => getClientIp(),
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+        ]);
+        
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Invalid queue parameter. Expected format: X.X (e.g., 2.2)'
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        exit;
+    }
 }
 
 $sourceUrl = 'https://kiroe.com.ua/electricity-blackout';
@@ -554,6 +560,40 @@ if ($needUpdate) {
             }
         }
     }
+}
+
+// Якщо запитується всі черги, повертаємо всі дані з кешу
+if ($requestAll) {
+    // Отримуємо стан ГАВ з кешу (за замовчуванням false якщо не встановлено)
+    $emergencyMode = isset($cacheData['emergency_mode']) ? (bool)$cacheData['emergency_mode'] : false;
+    
+    // Тестовий режим: якщо передано параметр test_emergency=1, встановлюємо emergency_mode = true для тестування
+    if (isset($_GET['test_emergency']) && $_GET['test_emergency'] == '1') {
+        $emergencyMode = true;
+    }
+    
+    // Вимірюємо час виконання запиту
+    $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+    
+    // Логуємо успішний запит
+    logRequest([
+        'queue' => 'all',
+        'source' => $dataSource,
+        'response_time_ms' => round($responseTime, 2),
+        'success' => true,
+        'ip' => getClientIp(),
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+    ]);
+    
+    // Повертаємо всі черги
+    echo json_encode([
+        'success' => true,
+        'queues' => isset($cacheData['queues']) ? $cacheData['queues'] : [],
+        'emergency_mode' => $emergencyMode,
+        'updated' => isset($cacheData['timestamp']) ? $cacheData['timestamp'] : null,
+        'source' => $sourceUrl
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
 }
 
 // Отримуємо графік для запитуваної черги

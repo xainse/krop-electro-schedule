@@ -261,3 +261,93 @@ button:active {
   width: auto;
 }
 
+.overview-table {
+  margin-top: 24px;
+  overflow-x: auto;
+}
+
+.overview-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card-bg);
+  border: 1px solid var(--ring);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.overview-table th,
+.overview-table td {
+  padding: 0;
+  text-align: center;
+  border: 1px solid var(--ring);
+}
+
+.overview-table th.cell-hour {
+  background: var(--card-bg);
+  color: var(--card-fg);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px;
+  min-width: 50px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.overview-table th.cell-queue {
+  background: var(--card-bg);
+  color: var(--card-fg);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 4px;
+  min-width: 40px;
+}
+
+.overview-table td.cell-data {
+  aspect-ratio: 1;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: var(--unknown-bg);
+  transition: background-color 0.2s ease;
+}
+
+.overview-table td.cell-data.state-on {
+  background: var(--on-bg);
+}
+
+.overview-table td.cell-data.state-off {
+  background: var(--off-bg);
+}
+
+.overview-table td.cell-data.state-unknown {
+  background: var(--unknown-bg);
+}
+
+.overview-table td.cell-data.state-mixed {
+  background: linear-gradient(to right, var(--off-bg) 50%, var(--on-bg) 50%);
+}
+
+.overview-table td.cell-data.state-mixed-reverse {
+  background: linear-gradient(to right, var(--on-bg) 50%, var(--off-bg) 50%);
+}
+
+@media (max-width: 768px) {
+  .overview-table td.cell-data {
+    width: 30px;
+    height: 30px;
+  }
+  
+  .overview-table th.cell-queue {
+    font-size: 11px;
+    padding: 6px 2px;
+    min-width: 30px;
+  }
+  
+  .overview-table th.cell-hour {
+    font-size: 11px;
+    padding: 6px;
+    min-width: 40px;
+  }
+}
+

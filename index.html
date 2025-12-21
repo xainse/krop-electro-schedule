@@ -82,11 +82,35 @@
         <span>Допоможи 🇺🇦 Україні! Задонать на Русоріз!</span>
       </a>
     </div>
+    <div class="overview-table">
+      <table id="overviewTable" aria-label="Таблиця графіків відключень для всіх черг">
+        <thead>
+          <tr>
+            <th class="cell-hour"></th>
+            <th class="cell-queue">1.1</th>
+            <th class="cell-queue">1.2</th>
+            <th class="cell-queue">2.1</th>
+            <th class="cell-queue">2.2</th>
+            <th class="cell-queue">3.1</th>
+            <th class="cell-queue">3.2</th>
+            <th class="cell-queue">4.1</th>
+            <th class="cell-queue">4.2</th>
+            <th class="cell-queue">5.1</th>
+            <th class="cell-queue">5.2</th>
+            <th class="cell-queue">6.1</th>
+            <th class="cell-queue">6.2</th>
+          </tr>
+        </thead>
+        <tbody id="overviewTableBody">
+          <!-- Ячейки будуть додані через JavaScript -->
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.29';
+    const VERSION = '1.30';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -103,6 +127,7 @@
     const versionEl = document.getElementById('version');
     const notificationStatusText = document.getElementById('notificationStatusText');
     const requestNotificationLink = document.getElementById('requestNotificationLink');
+    const overviewTableBody = document.getElementById('overviewTableBody');
     
     // Зберігаємо попередній графік для порівняння
     let previousHours = null;
@@ -466,6 +491,84 @@
       }
     }
 
+    // Функція для завантаження даних всіх черг
+    async function loadAllQueues() {
+      try {
+        const res = await fetch('https://xain.in.ua/api/blackout.php?all=1', { cache: 'no-store' });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        }
+        const data = await res.json();
+        if (data.success && data.queues) {
+          renderOverviewTable(data.queues);
+        }
+      } catch (err) {
+        console.error('Помилка завантаження даних всіх черг:', err);
+        // При помилці показуємо порожню таблицю з невідомими значеннями
+        renderOverviewTable({});
+      }
+    }
+
+    // Функція для рендерингу таблиці всіх черг
+    function renderOverviewTable(queuesData) {
+      if (!overviewTableBody) return;
+      
+      // Список всіх черг у правильному порядку
+      const allQueues = ['1.1', '1.2', '2.1', '2.2', '3.1', '3.2', '4.1', '4.2', '5.1', '5.2', '6.1', '6.2'];
+      
+      // Очищаємо таблицю
+      overviewTableBody.innerHTML = '';
+      
+      // Створюємо рядки для кожної години (0-23)
+      for (let hour = 0; hour < 24; hour++) {
+        const row = document.createElement('tr');
+        
+        // Додаємо заголовок з годиною
+        const hourCell = document.createElement('td');
+        hourCell.className = 'cell-hour';
+        hourCell.textContent = `${String(hour).padStart(2, '0')}:00`;
+        row.appendChild(hourCell);
+        
+        // Додаємо ячейки для кожної черги
+        for (const queue of allQueues) {
+          const cell = document.createElement('td');
+          cell.className = 'cell-data';
+          
+          // Отримуємо дані для цієї черги
+          const schedule = queuesData[queue];
+          if (schedule) {
+            // Використовуємо normalizeTo24 для обробки даних
+            const data = { schedule: schedule };
+            const periods = normalizeTo24(data);
+            
+            // Отримуємо два півгодинні періоди для цієї години
+            const firstHalf = periods[hour * 2];
+            const secondHalf = periods[hour * 2 + 1];
+            
+            // Визначаємо стан ячейки
+            if (firstHalf === true && secondHalf === true) {
+              cell.classList.add('state-on');
+            } else if (firstHalf === false && secondHalf === false) {
+              cell.classList.add('state-off');
+            } else if (firstHalf === false && secondHalf === true) {
+              cell.classList.add('state-mixed');
+            } else if (firstHalf === true && secondHalf === false) {
+              cell.classList.add('state-mixed-reverse');
+            } else {
+              cell.classList.add('state-unknown');
+            }
+          } else {
+            // Немає даних для цієї черги
+            cell.classList.add('state-unknown');
+          }
+          
+          row.appendChild(cell);
+        }
+        
+        overviewTableBody.appendChild(row);
+      }
+    }
+
     async function load() {
       errorMsg.style.display = 'none';
       emergencyMsg.style.display = 'none';
@@ -577,6 +680,9 @@
         
         // Приховуємо повідомлення про застарілі дані, якщо воно було показано
         apiErrorMsg.style.display = 'none';
+        
+        // Оновлюємо таблицю всіх черг
+        loadAllQueues();
       } catch (err) {
         console.error('Помилка завантаження даних:', err);
         
@@ -642,6 +748,9 @@
     }
     
     load();
+    
+    // Завантажуємо дані для таблиці всіх черг
+    loadAllQueues();
 
     // Кнопка «Оновити»
     refreshBtn.addEventListener('click', load);
