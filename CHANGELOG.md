@@ -5,6 +5,11 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [1.34] - 2025-01-10
+
+### Виправлено
+- Уточнено стилі виділення активної години: явно встановлено border-top та border-bottom в 0
+
 ## [1.33] - 2025-01-10
 
 ### Видалено
