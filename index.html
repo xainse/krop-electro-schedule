@@ -84,23 +84,6 @@
     </div>
     <div class="overview-table">
       <table id="overviewTable" aria-label="Таблиця графіків відключень для всіх черг">
-        <thead>
-          <tr>
-            <th class="cell-hour"></th>
-            <th class="cell-queue">1.1</th>
-            <th class="cell-queue">1.2</th>
-            <th class="cell-queue">2.1</th>
-            <th class="cell-queue">2.2</th>
-            <th class="cell-queue">3.1</th>
-            <th class="cell-queue">3.2</th>
-            <th class="cell-queue">4.1</th>
-            <th class="cell-queue">4.2</th>
-            <th class="cell-queue">5.1</th>
-            <th class="cell-queue">5.2</th>
-            <th class="cell-queue">6.1</th>
-            <th class="cell-queue">6.2</th>
-          </tr>
-        </thead>
         <tbody id="overviewTableBody">
           <!-- Ячейки будуть додані через JavaScript -->
         </tbody>
@@ -110,7 +93,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.30';
+    const VERSION = '1.31';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -428,6 +411,33 @@
       if (currentCell) {
         currentCell.classList.add('active');
       }
+      
+      // Оновлюємо виділення активної години в таблиці
+      updateActiveHourInTable();
+    }
+
+    // Функція для оновлення виділення активної години в таблиці
+    function updateActiveHourInTable() {
+      if (!overviewTableBody) return;
+      
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      // Прибираємо виділення з усіх ячеек таблиці
+      const allTableCells = overviewTableBody.querySelectorAll('.cell-data');
+      allTableCells.forEach(cell => {
+        cell.classList.remove('active-hour');
+      });
+      
+      // Додаємо виділення до всіх ячеек поточної години (всі рядки, одна колонка)
+      const rows = overviewTableBody.querySelectorAll('tr');
+      rows.forEach(row => {
+        // Пропускаємо першу ячейку (заголовок черги), тому індекс = currentHour + 1
+        const activeCell = row.querySelectorAll('.cell-data')[currentHour];
+        if (activeCell) {
+          activeCell.classList.add('active-hour');
+        }
+      });
     }
 
     // Функція для запиту дозволу на нотифікації
@@ -516,31 +526,43 @@
       // Список всіх черг у правильному порядку
       const allQueues = ['1.1', '1.2', '2.1', '2.2', '3.1', '3.2', '4.1', '4.2', '5.1', '5.2', '6.1', '6.2'];
       
+      // Отримуємо поточну годину для виділення активного стовпчика
+      const now = new Date();
+      const currentHour = now.getHours();
+      
       // Очищаємо таблицю
       overviewTableBody.innerHTML = '';
       
-      // Створюємо рядки для кожної години (0-23)
-      for (let hour = 0; hour < 24; hour++) {
+      // Створюємо рядки для кожної черги
+      for (const queue of allQueues) {
         const row = document.createElement('tr');
         
-        // Додаємо заголовок з годиною
-        const hourCell = document.createElement('td');
-        hourCell.className = 'cell-hour';
-        hourCell.textContent = `${String(hour).padStart(2, '0')}:00`;
-        row.appendChild(hourCell);
+        // Додаємо заголовок з чергою
+        const queueCell = document.createElement('td');
+        queueCell.className = 'cell-queue';
+        queueCell.textContent = queue;
+        row.appendChild(queueCell);
         
-        // Додаємо ячейки для кожної черги
-        for (const queue of allQueues) {
+        // Отримуємо дані для цієї черги
+        const schedule = queuesData[queue];
+        let periods = null;
+        if (schedule) {
+          // Використовуємо normalizeTo24 для обробки даних
+          const data = { schedule: schedule };
+          periods = normalizeTo24(data);
+        }
+        
+        // Додаємо ячейки для кожної години (0-23)
+        for (let hour = 0; hour < 24; hour++) {
           const cell = document.createElement('td');
           cell.className = 'cell-data';
           
-          // Отримуємо дані для цієї черги
-          const schedule = queuesData[queue];
-          if (schedule) {
-            // Використовуємо normalizeTo24 для обробки даних
-            const data = { schedule: schedule };
-            const periods = normalizeTo24(data);
-            
+          // Додаємо клас active для поточної години
+          if (hour === currentHour) {
+            cell.classList.add('active-hour');
+          }
+          
+          if (periods) {
             // Отримуємо два півгодинні періоди для цієї години
             const firstHalf = periods[hour * 2];
             const secondHalf = periods[hour * 2 + 1];
@@ -567,6 +589,9 @@
         
         overviewTableBody.appendChild(row);
       }
+      
+      // Оновлюємо виділення активної години після рендерингу
+      updateActiveHourInTable();
     }
 
     async function load() {
