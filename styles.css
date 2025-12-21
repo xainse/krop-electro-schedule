@@ -329,6 +329,40 @@ button:active {
   background: linear-gradient(to right, var(--on-bg) 50%, var(--off-bg) 50%);
 }
 
+/* Стилі для таблиці з емоджі */
+.overview-table #overviewTableEmoji {
+  margin-bottom: 12px;
+}
+
+.overview-table td.cell-queue-emoji {
+  background: var(--card-bg);
+  color: var(--card-fg);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 4px 6px;
+  min-width: 35px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  text-align: left;
+}
+
+.overview-table td.cell-emoji {
+  padding: 2px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1;
+  min-width: 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.overview-table td.cell-emoji.active-hour {
+  border: 2px solid #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+  border-radius: 2px;
+}
+
 @media (max-width: 768px) {
   .overview-table td.cell-data {
     width: 20px;
@@ -339,6 +373,20 @@ button:active {
     font-size: 11px;
     padding: 4px 6px;
     min-width: 35px;
+  }
+  
+  .overview-table td.cell-queue-emoji {
+    font-size: 8px;
+    padding: 3px 4px;
+    min-width: 30px;
+  }
+  
+  .overview-table td.cell-emoji {
+    font-size: 10px;
+    min-width: 16px;
+    width: 16px;
+    height: 16px;
+    padding: 1px;
   }
 }
 

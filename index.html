@@ -83,6 +83,11 @@
       </a>
     </div>
     <div class="overview-table">
+      <table id="overviewTableEmoji" aria-label="Таблиця графіків відключень для всіх черг (емоджі)">
+        <tbody id="overviewTableEmojiBody">
+          <!-- Ячейки будуть додані через JavaScript -->
+        </tbody>
+      </table>
       <table id="overviewTable" aria-label="Таблиця графіків відключень для всіх черг">
         <tbody id="overviewTableBody">
           <!-- Ячейки будуть додані через JavaScript -->
@@ -93,7 +98,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '1.31';
+    const VERSION = '1.32';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -111,6 +116,7 @@
     const notificationStatusText = document.getElementById('notificationStatusText');
     const requestNotificationLink = document.getElementById('requestNotificationLink');
     const overviewTableBody = document.getElementById('overviewTableBody');
+    const overviewTableEmojiBody = document.getElementById('overviewTableEmojiBody');
     
     // Зберігаємо попередній графік для порівняння
     let previousHours = null;
@@ -414,6 +420,7 @@
       
       // Оновлюємо виділення активної години в таблиці
       updateActiveHourInTable();
+      updateActiveHourInTableEmoji();
     }
 
     // Функція для оновлення виділення активної години в таблиці
@@ -511,11 +518,13 @@
         const data = await res.json();
         if (data.success && data.queues) {
           renderOverviewTable(data.queues);
+          renderOverviewTableEmoji(data.queues);
         }
       } catch (err) {
         console.error('Помилка завантаження даних всіх черг:', err);
         // При помилці показуємо порожню таблицю з невідомими значеннями
         renderOverviewTable({});
+        renderOverviewTableEmoji({});
       }
     }
 
@@ -592,6 +601,107 @@
       
       // Оновлюємо виділення активної години після рендерингу
       updateActiveHourInTable();
+    }
+
+    // Функція для рендерингу таблиці всіх черг з емоджі
+    function renderOverviewTableEmoji(queuesData) {
+      if (!overviewTableEmojiBody) return;
+      
+      // Список всіх черг у правильному порядку
+      const allQueues = ['1.1', '1.2', '2.1', '2.2', '3.1', '3.2', '4.1', '4.2', '5.1', '5.2', '6.1', '6.2'];
+      
+      // Отримуємо поточну годину для виділення активного стовпчика
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      // Очищаємо таблицю
+      overviewTableEmojiBody.innerHTML = '';
+      
+      // Створюємо рядки для кожної черги
+      for (const queue of allQueues) {
+        const row = document.createElement('tr');
+        
+        // Додаємо заголовок з чергою
+        const queueCell = document.createElement('td');
+        queueCell.className = 'cell-queue-emoji';
+        queueCell.textContent = queue;
+        row.appendChild(queueCell);
+        
+        // Отримуємо дані для цієї черги
+        const schedule = queuesData[queue];
+        let periods = null;
+        if (schedule) {
+          // Використовуємо normalizeTo24 для обробки даних
+          const data = { schedule: schedule };
+          periods = normalizeTo24(data);
+        }
+        
+        // Додаємо ячейки для кожної години (0-23)
+        for (let hour = 0; hour < 24; hour++) {
+          const cell = document.createElement('td');
+          cell.className = 'cell-emoji';
+          
+          // Додаємо клас active для поточної години
+          if (hour === currentHour) {
+            cell.classList.add('active-hour');
+          }
+          
+          if (periods) {
+            // Отримуємо два півгодинні періоди для цієї години
+            const firstHalf = periods[hour * 2];
+            const secondHalf = periods[hour * 2 + 1];
+            
+            // Визначаємо емоджі на основі стану
+            if (firstHalf === true && secondHalf === true) {
+              cell.textContent = '🟨'; // Жовтий квадрат - є електрика
+            } else if (firstHalf === false && secondHalf === false) {
+              cell.textContent = '⬛'; // Чорний квадрат - відключено
+            } else if (firstHalf === false && secondHalf === true) {
+              // Перша половина відключена, друга є
+              cell.textContent = '⬛🟨';
+            } else if (firstHalf === true && secondHalf === false) {
+              // Перша половина є, друга відключена
+              cell.textContent = '🟨⬛';
+            } else {
+              cell.textContent = '⬜'; // Білий квадрат - невідомо
+            }
+          } else {
+            // Немає даних для цієї черги
+            cell.textContent = '⬜'; // Білий квадрат - невідомо
+          }
+          
+          row.appendChild(cell);
+        }
+        
+        overviewTableEmojiBody.appendChild(row);
+      }
+      
+      // Оновлюємо виділення активної години після рендерингу
+      updateActiveHourInTableEmoji();
+    }
+
+    // Функція для оновлення виділення активної години в таблиці з емоджі
+    function updateActiveHourInTableEmoji() {
+      if (!overviewTableEmojiBody) return;
+      
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      // Прибираємо виділення з усіх ячеек таблиці
+      const allTableCells = overviewTableEmojiBody.querySelectorAll('.cell-emoji');
+      allTableCells.forEach(cell => {
+        cell.classList.remove('active-hour');
+      });
+      
+      // Додаємо виділення до всіх ячеек поточної години (всі рядки, одна колонка)
+      const rows = overviewTableEmojiBody.querySelectorAll('tr');
+      rows.forEach(row => {
+        // Пропускаємо першу ячейку (заголовок черги), тому індекс = currentHour
+        const activeCell = row.querySelectorAll('.cell-emoji')[currentHour];
+        if (activeCell) {
+          activeCell.classList.add('active-hour');
+        }
+      });
     }
 
     async function load() {
