@@ -59,9 +59,9 @@
     <div class="card">
       <div class="legend">
         <span><span class="dot" style="background:var(--on-bg)"></span>Електрика є <span
-            aria-hidden="true">⚡</span></span>
+            aria-hidden="true">⚡</span> <span id="hoursOnStat" class="hours-stat">—</span></span>
         <span><span class="dot" style="background:var(--off-bg)"></span>Відключено <span
-            aria-hidden="true">🌑</span></span>
+            aria-hidden="true">🌑</span> <span id="hoursOffStat" class="hours-stat">—</span></span>
       </div>
       <div id="statusMsg" class="meta" style="margin-bottom:8px;"></div>
       <div id="errorMsg" class="error" style="display:none;"></div>
@@ -93,7 +93,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '2.0.1';
+    const VERSION = '2.2';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -391,6 +391,22 @@
           cell.insertAdjacentHTML('beforeend', '<span class="sr-only">Невідомо</span>');
         }
       }
+      
+      // Підраховуємо статистику
+      const stats = calculateDailyStats(periods);
+      
+      // Оновлюємо відображення статистики
+      const hoursOnEl = document.getElementById('hoursOnStat');
+      const hoursOffEl = document.getElementById('hoursOffStat');
+      
+      if (hoursOnEl) {
+        hoursOnEl.textContent = formatHoursText(stats.onHours, stats.onMinutes);
+      }
+      
+      if (hoursOffEl) {
+        hoursOffEl.textContent = formatHoursText(stats.offHours, stats.offMinutes);
+      }
+      
       // Оновлюємо виділення активної години після рендерингу
       updateActiveHour();
     }
@@ -414,6 +430,41 @@
       
       // Оновлюємо виділення активної години в таблиці
       updateActiveHourInTable();
+    }
+
+    // Функція для підрахунку денної статистики (скільки годин світло/відключення)
+    function calculateDailyStats(periods) {
+      let onCount = 0;    // Кількість півгодин зі світлом
+      let offCount = 0;   // Кількість півгодин без світла
+      
+      for (let i = 0; i < 48; i++) {
+        if (periods[i] === true) {
+          onCount++;
+        } else if (periods[i] === false) {
+          offCount++;
+        }
+        // null (невідомо) не рахуємо
+      }
+      
+      // Конвертуємо півгодини в години та хвилини
+      const onHours = Math.floor(onCount / 2);
+      const onMinutes = (onCount % 2) * 30;
+      const offHours = Math.floor(offCount / 2);
+      const offMinutes = (offCount % 2) * 30;
+      
+      return {
+        onHours,
+        onMinutes,
+        offHours,
+        offMinutes
+      };
+    }
+
+    // Функція для форматування часу у вигляді "H:MM"
+    function formatHoursText(hours, minutes) {
+      // Форматуємо хвилини з ведучим нулем якщо < 10
+      const minutesStr = minutes.toString().padStart(2, '0');
+      return `${hours}:${minutesStr}`;
     }
 
     // Функція для оновлення виділення активної години в таблиці

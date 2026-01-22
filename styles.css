@@ -345,3 +345,11 @@ button:active {
   }
 }
 
+/* Стилі для статистики годин в легенді */
+.hours-stat {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
