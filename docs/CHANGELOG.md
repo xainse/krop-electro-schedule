@@ -5,6 +5,88 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [2.0.1] - 2026-01-22
+
+### Змінено
+- **RSS URL**: Замінено на https://rss.app/feeds/mqBOeTuLJO2YFCZC.xml (більш актуальні дані)
+- **Підтримка СГАВ**: Додано розпізнавання "спеціальний графік аварійних відключень" (СГАВ)
+  - Оновлено `parser.php` - додано патерни для СГАВ
+  - Оновлено `site_fetcher.php` - підтримка СГАВ при парсингу HTML
+  - Оновлено `blackout.php` - розпізнавання СГАВ
+  - СГАВ прирівнюється до ГАВ і відображається з тим самим попередженням
+
+## [2.0] - 2026-01-22
+
+### 🚀 MAJOR CHANGE: Перехід з Telegram Bot API на RSS
+
+**Причина зміни:** Спрощення архітектури, підвищення надійності та швидкості отримання даних
+
+### Додано
+- **RSS Fetcher (`api/rss_fetcher.php`)**: Новий модуль для отримання даних через RSS фід
+  - `fetchFromRSS($limit)` - завантаження та парсинг RSS
+  - `parseRSSItem($item)` - обробка окремого RSS елемента
+  - `extractTextFromHTML($html)` - витягування тексту з HTML description
+  - Підтримка автоматичного парсингу всіх типів повідомлень (графіки, ГАВ, зміни)
+- **RSS історія**: Збереження всіх отриманих повідомлень в `cache/rss_messages.json`
+- **Інтервал перевірки**: Автоматична перевірка RSS кожні 5 хвилин
+- **Функції в data.php**:
+  - `saveRSSMessage()` - збереження RSS повідомлення в історію
+  - `getRSSMessages()` - читання історії RSS повідомлень
+- **RSS конфігурація**:
+  - `RSS_URL` - посилання на RSS фід
+  - `RSS_CHECK_INTERVAL` - інтервал перевірки (5 хвилин)
+  - `RSS_MESSAGES_FILE` - файл історії RSS
+  - `LAST_RSS_CHECK_FILE` - timestamp останньої перевірки
+
+### Змінено
+- **Каскадний fallback**: RSS → Site (замість Telegram → Site)
+  1. Спочатку перевіряється RSS фід
+  2. Якщо RSS недоступний → fallback на парсинг kiroe.com.ua
+  3. Якщо обидва недоступні → використання кешу
+- **API endpoint (`api/blackout.php`)**:
+  - Додано `shouldCheckRSS()` - перевірка 5-хв інтервалу
+  - Додано `saveRSSCheckTimestamp()` - збереження часу перевірки
+  - Оновлена логіка оновлення даних з RSS fallback
+  - При ініціалізації (порожній кеш) завантажується 100 останніх RSS повідомлень
+  - При поточній роботі - 10 останніх повідомлень
+- **Конфігурація (`api/config.php`)**:
+  - Видалено всі Telegram константи (TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, SETUP_PASSWORD)
+  - Додано RSS константи
+  - SOURCE_TELEGRAM замінено на SOURCE_RSS
+- **Документація**:
+  - Оновлено README.md з інформацією про RSS
+  - Додано план міграції `docs/RSS_MIGRATION_PLAN_2026-01-22.md`
+  - Видалено застарілі Telegram інструкції
+
+### Видалено
+- ❌ `api/telegram_fetcher.php` - Telegram Bot API fetcher
+- ❌ `api/telegram_setup.php` - веб-інтерфейс налаштування бота
+- ❌ `api/telegram_webhook.php` - Telegram webhook handler
+- ❌ `docs/TELEGRAM_BOT_PLAN.md` - план Telegram інтеграції
+- ❌ `docs/TELEGRAM_SETUP_INSTRUCTIONS.md` - інструкції налаштування бота
+- ❌ `docs/QUICK_START.md` - швидкий старт для Telegram
+- ❌ `docs/НАСТУПНІ_КРОКИ.md` - наступні кроки (Telegram-специфічні)
+
+### Архітектура (нова)
+```
+RSS Фід (кожні 5 хв) → JSON кеш → API → Frontend
+        ↓ (fallback)
+  kiroe.com.ua сайт
+```
+
+**Переваги нового підходу:**
+- ✅ Простота - не потрібен Bot Token, webhook, налаштування
+- ✅ Надійність - RSS більш стабільний ніж Bot API
+- ✅ Швидкість - прямий доступ до даних без проміжних запитів
+- ✅ Fallback - автоматичне перемикання на сайт при недоступності RSS
+- ✅ Історія - збереження всіх отриманих повідомлень
+
+### Міграція
+Для існуючих інсталяцій:
+1. Оновити `api/config.php` (видалити Telegram токени, не критично якщо залишаться)
+2. Переконатись що доступний RSS URL: https://fetchrss.com/feed/1viogN2iQDkR1viofe38pFiF.rss
+3. API автоматично почне використовувати RSS при наступному запиті
+
 ## [1.36] - 2025-01-20
 
 ### Додано

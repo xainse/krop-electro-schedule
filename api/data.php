@@ -179,11 +179,11 @@ function logApiRequest($data) {
 }
 
 /**
- * Зберігає Telegram повідомлення в telegram_messages.json
+ * Зберігає RSS повідомлення в rss_messages.json
  * @param array $messageData Дані повідомлення
  * @return bool Успіх операції
  */
-function saveTelegramMessage($messageData) {
+function saveRSSMessage($messageData) {
     // Створюємо папку якщо її немає
     if (!is_dir(CACHE_DIR)) {
         if (!@mkdir(CACHE_DIR, 0755, true)) {
@@ -193,8 +193,8 @@ function saveTelegramMessage($messageData) {
     
     // Завантажуємо існуючі повідомлення
     $messages = [];
-    if (file_exists(MESSAGES_FILE)) {
-        $messages = @json_decode(file_get_contents(MESSAGES_FILE), true) ?: [];
+    if (file_exists(RSS_MESSAGES_FILE)) {
+        $messages = @json_decode(file_get_contents(RSS_MESSAGES_FILE), true) ?: [];
     }
     
     // Додаємо нове повідомлення
@@ -213,7 +213,7 @@ function saveTelegramMessage($messageData) {
     }
     
     // Atomic write через temp file
-    $tempFile = MESSAGES_FILE . '.tmp';
+    $tempFile = RSS_MESSAGES_FILE . '.tmp';
     if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
         return false;
     }
@@ -222,7 +222,7 @@ function saveTelegramMessage($messageData) {
     @chmod($tempFile, 0644);
     
     // Атомарно переміщуємо temp file на місце основного
-    if (!@rename($tempFile, MESSAGES_FILE)) {
+    if (!@rename($tempFile, RSS_MESSAGES_FILE)) {
         @unlink($tempFile);
         return false;
     }
@@ -231,16 +231,16 @@ function saveTelegramMessage($messageData) {
 }
 
 /**
- * Читає історію Telegram повідомлень
+ * Читає історію RSS повідомлень
  * @param int $limit Максимальна кількість повідомлень
  * @return array Масив повідомлень
  */
-function getTelegramMessages($limit = 100) {
-    if (!file_exists(MESSAGES_FILE)) {
+function getRSSMessages($limit = 100) {
+    if (!file_exists(RSS_MESSAGES_FILE)) {
         return [];
     }
     
-    $messages = @json_decode(file_get_contents(MESSAGES_FILE), true);
+    $messages = @json_decode(file_get_contents(RSS_MESSAGES_FILE), true);
     if (!is_array($messages)) {
         return [];
     }

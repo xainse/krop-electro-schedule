@@ -34,10 +34,12 @@ https://xain.in.ua/api/blackout.php?queue=X.X
 
 API використовує каскадний fallback:
 1. **JSON кеш** - швидка відповідь з локального кешу
-2. **Telegram Bot** - автоматичне оновлення з Telegram каналу (в розробці)
-3. **Сайт kiroe.com.ua** - резервне джерело якщо Telegram недоступний
+2. **RSS фід** - автоматичне оновлення з RSS (кожні 5 хвилин)
+3. **Сайт kiroe.com.ua** - резервне джерело якщо RSS недоступний
 
 API кешує дані на 24 години та логує всі запити.
+
+**RSS джерело:** https://rss.app/feeds/mqBOeTuLJO2YFCZC.xml
 
 Формат відповіді: JSON з полем `schedule`, що містить діапазони часу відключення:
 ```json
@@ -61,15 +63,13 @@ API кешує дані на 24 години та логує всі запити
 
 Детальна документація знаходиться в папці [`docs/`](docs/):
 
-- **[Швидкий старт](docs/QUICK_START.md)** - Налаштування Telegram бота (5 хв)
-- **[Наступні кроки](docs/НАСТУПНІ_КРОКИ.md)** - Що робити далі
-- **[Детальна інструкція](docs/TELEGRAM_SETUP_INSTRUCTIONS.md)** - Покрокове налаштування
-- **[План архітектури](docs/TELEGRAM_BOT_PLAN.md)** - Telegram інтеграція з fallback
+- **[План міграції на RSS](docs/RSS_MIGRATION_PLAN_2026-01-22.md)** - Архітектура RSS інтеграції
 - **[Історія змін](docs/CHANGELOG.md)** - Всі зміни в проєкті
 
 ## 🔗 Посилання
 
-- [Джерело даних](https://kiroe.com.ua/electricity-blackout)
+- [Джерело даних (сайт)](https://kiroe.com.ua/electricity-blackout)
+- [Джерело даних (RSS)](https://rss.app/feeds/mqBOeTuLJO2YFCZC.xml)
 - [Telegram канал](https://t.me/SvitloKropyvnytskyiMisto)
 
 ## 📄 Ліцензія

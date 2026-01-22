@@ -59,6 +59,52 @@ if (!$requestAll) {
 $sourceUrl = 'https://kiroe.com.ua/electricity-blackout';
 const CACHE_TTL = 600; // 10 хвилин в секундах
 
+// Завантажуємо RSS fetcher
+require_once __DIR__ . '/rss_fetcher.php';
+
+/**
+ * Перевіряє чи минуло достатньо часу для перевірки RSS
+ * @return bool true якщо можна перевіряти RSS
+ */
+function shouldCheckRSS() {
+    // Перевіряємо чи існує файл з timestamp останньої перевірки
+    if (!file_exists(LAST_RSS_CHECK_FILE)) {
+        return true; // Файл не існує - можна перевіряти
+    }
+    
+    $lastCheck = @file_get_contents(LAST_RSS_CHECK_FILE);
+    if ($lastCheck === false) {
+        return true; // Помилка читання - можна перевіряти
+    }
+    
+    $lastCheckTime = (int)$lastCheck;
+    $timePassed = time() - $lastCheckTime;
+    
+    // Перевіряємо чи минуло RSS_CHECK_INTERVAL (5 хвилин)
+    return $timePassed >= RSS_CHECK_INTERVAL;
+}
+
+/**
+ * Зберігає timestamp поточної перевірки RSS
+ * @return bool Успіх операції
+ */
+function saveRSSCheckTimestamp() {
+    // Створюємо папку якщо її немає
+    $dir = dirname(LAST_RSS_CHECK_FILE);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    
+    $result = @file_put_contents(LAST_RSS_CHECK_FILE, time(), LOCK_EX);
+    
+    if ($result !== false) {
+        @chmod(LAST_RSS_CHECK_FILE, 0644);
+        return true;
+    }
+    
+    return false;
+}
+
 /**
  * Повертає шлях до файлу логу для поточної дати
  * @return string Шлях до файлу логу
@@ -246,14 +292,19 @@ function normalizeSchedule($schedule) {
  * @return bool true якщо ГАВ активний, false інакше
  */
 function checkEmergencyMode($html) {
-    // Спочатку перевіряємо чи ГАВ скасовано
+    // Спочатку перевіряємо чи ГАВ/СГАВ скасовано
     // Якщо знайдено текст про скасування - повертаємо false одразу
     $cancellationPatterns = [
         '/дію\s+графіка\s+аварійних\s+відключень\s*\(?\s*ГАВ\s*\)?\s+скасовано/i',
         '/скасовано\s+дію\s+графіка\s+аварійних\s+відключень/i',
         '/ГАВ\s+скасовано/i',
         '/скасовано\s+ГАВ/i',
-        '/графік\s+аварійних\s+відключень\s*\(?\s*ГАВ\s*\)?\s+скасовано/i'
+        '/графік\s+аварійних\s+відключень\s*\(?\s*ГАВ\s*\)?\s+скасовано/i',
+        '/дію\s+спеціального\s+графіка\s+аварійних\s+відключень\s*\(?\s*СГАВ\s*\)?\s+скасовано/i',
+        '/скасовано\s+дію\s+спеціального\s+графіка\s+аварійних\s+відключень/i',
+        '/СГАВ\s+скасовано/i',
+        '/скасовано\s+СГАВ/i',
+        '/спеціальний\s+графік\s+аварійних\s+відключень\s*\(?\s*СГАВ\s*\)?\s+скасовано/i'
     ];
     
     foreach ($cancellationPatterns as $pattern) {
@@ -262,22 +313,28 @@ function checkEmergencyMode($html) {
         }
     }
     
-    // Шукаємо текст про "графік аварійних відключень" або "ГАВ"
+    // Шукаємо текст про "графік аварійних відключень", "ГАВ" або "СГАВ"
     // Перевіряємо різні варіанти написання та комбінації
     $patterns = [
         // Точні збіги про ГАВ
         '/графік\s+аварійних\s+відключень/i',
         '/графік\s*аварійних\s*відключень/i',
         '/ГАВ/i',
+        // СГАВ (спеціальний графік аварійних відключень)
+        '/спеціальний\s+графік\s+аварійних\s+відключень/i',
+        '/спеціальний\s*графік\s*аварійних\s*відключень/i',
+        '/СГАВ/i',
         // Комбінації з "введено в дію"
         '/введено\s+в\s+дію\s+графік\s+аварійних/i',
         '/введено\s+в\s+дію\s+графік\s*аварійних/i',
+        '/введено\s+в\s+дію\s+спеціальний\s+графік\s+аварійних/i',
         // Інші варіанти
         '/аварійних\s+відключень/i',
         '/аварійного\s+відключення/i',
         // Шукаємо також в тексті повідомлень про важливу інформацію
         '/Увага.*аварійних/i',
-        '/Увага.*ГАВ/i'
+        '/Увага.*ГАВ/i',
+        '/Увага.*СГАВ/i'
     ];
     
     foreach ($patterns as $pattern) {
@@ -416,66 +473,59 @@ if ($forceRefresh) {
     $needUpdate = true;
 }
 
-// Якщо потрібно оновити - спробуємо завантажити дані з сайту
+// Якщо потрібно оновити - спробуємо завантажити дані через RSS або сайт
 if ($needUpdate) {
-    $dataSource = 'site';
-    $html = fetchUrl($sourceUrl);
+    // Перевіряємо чи можна перевіряти RSS (чи минуло 5 хвилин)
+    $canCheckRSS = shouldCheckRSS();
     
-    // Перевірка чи вдалося завантажити сторінку
-    // Якщо сайт недоступний (kiroe.com.ua не працює) - використовуємо кеш якщо він є
-    if ($html === false) {
-        $fetchFailed = true;
-        // Якщо є кеш - використаємо його, не повертаємо помилку
-        // Це гарантує, що фронтенд завжди отримає дані (навіть застарілі) якщо кеш існує
-        if ($cacheData !== null && isset($cacheData['queues'])) {
-            $dataSource = 'cache';
-            // Продовжуємо виконання з даними з кешу
+    // Спочатку пробуємо RSS якщо дозволено
+    $rssSuccess = false;
+    if ($canCheckRSS) {
+        $dataSource = 'rss';
+        
+        // Визначаємо limit для RSS
+        $rssLimit = ($cacheData === false || !isset($cacheData['queues'])) ? 100 : 10;
+        
+        $rssData = fetchFromRSS($rssLimit);
+        
+        if ($rssData && !empty($rssData['queues'])) {
+            // RSS успішно повернув дані
+            $rssSuccess = true;
+            $newDataObtained = true;
+            
+            // Оновлюємо кеш даними з RSS
+            $cacheData = [
+                'timestamp' => time(),
+                'queues' => $rssData['queues'],
+                'emergency_mode' => $rssData['emergency_mode']
+            ];
+            
+            saveCache($cacheFile, $cacheData);
+            
+            // Зберігаємо timestamp перевірки RSS
+            saveRSSCheckTimestamp();
         } else {
-            // Кешу немає і дані не отримано - повертаємо помилку
-            $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
-            
-            // Логуємо помилку
-            logRequest([
-                'queue' => $queue,
-                'source' => $dataSource,
-                'response_time_ms' => round($responseTime, 2),
-                'success' => false,
-                'ip' => getClientIp(),
-                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
-            ]);
-            
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Page not available',
-                'queue' => $queue,
-                'source' => $sourceUrl
-            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-            exit;
+            // RSS не повернув дані або помилка
+            error_log("RSS не повернув дані, використовуємо fallback на сайт");
         }
-    } else {
-        // HTML отримано, продовжуємо парсинг
-        // Створюємо DOMDocument для парсингу HTML
-        libxml_use_internal_errors(true);
-        $dom = new DOMDocument();
-        @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-        libxml_clear_errors();
+    }
+    
+    // Якщо RSS не спрацював - fallback на парсинг сайту
+    if (!$rssSuccess) {
+        $dataSource = 'site';
+        $html = fetchUrl($sourceUrl);
         
-        // Знаходимо елемент з ID info_popup
-        $xpath = new DOMXPath($dom);
-        $infoPopup = $xpath->query("//*[@id='info_popup']")->item(0);
-        
-        if (!$infoPopup) {
+        // Перевірка чи вдалося завантажити сторінку
+        if ($html === false) {
             $fetchFailed = true;
             // Якщо є кеш - використаємо його
             if ($cacheData !== null && isset($cacheData['queues'])) {
                 $dataSource = 'cache';
                 // Продовжуємо виконання з даними з кешу
             } else {
-                // Кешу немає - повертаємо помилку
-                $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+                // Кешу немає і дані не отримано - повертаємо помилку
+                $responseTime = (microtime(true) - $startTime) * 1000;
                 
-                // Логуємо помилку
                 logRequest([
                     'queue' => $queue,
                     'source' => $dataSource,
@@ -488,27 +538,29 @@ if ($needUpdate) {
                 http_response_code(404);
                 echo json_encode([
                     'success' => false,
-                    'error' => 'Info popup element not found',
+                    'error' => 'No data available: RSS failed and site unavailable',
                     'queue' => $queue,
                     'source' => $sourceUrl
                 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
                 exit;
             }
         } else {
-            // Знаходимо елемент з класом fancybox_body_desc
-            $bodyDesc = $xpath->query(".//*[contains(@class, 'fancybox_body_desc')]", $infoPopup)->item(0);
+            // HTML отримано, продовжуємо парсинг
+            libxml_use_internal_errors(true);
+            $dom = new DOMDocument();
+            @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
+            libxml_clear_errors();
             
-            if (!$bodyDesc) {
+            $xpath = new DOMXPath($dom);
+            $infoPopup = $xpath->query("//*[@id='info_popup']")->item(0);
+            
+            if (!$infoPopup) {
                 $fetchFailed = true;
-                // Якщо є кеш - використаємо його
                 if ($cacheData !== null && isset($cacheData['queues'])) {
                     $dataSource = 'cache';
-                    // Продовжуємо виконання з даними з кешу
                 } else {
-                    // Кешу немає - повертаємо помилку
-                    $responseTime = (microtime(true) - $startTime) * 1000; // в мілісекундах
+                    $responseTime = (microtime(true) - $startTime) * 1000;
                     
-                    // Логуємо помилку
                     logRequest([
                         'queue' => $queue,
                         'source' => $dataSource,
@@ -521,42 +573,61 @@ if ($needUpdate) {
                     http_response_code(404);
                     echo json_encode([
                         'success' => false,
-                        'error' => 'Schedule content not found',
+                        'error' => 'Info popup element not found',
                         'queue' => $queue,
                         'source' => $sourceUrl
                     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
                     exit;
                 }
             } else {
-                // Всі перевірки пройдено, парсимо дані
-                // Отримуємо текстовий вміст
-                $text = $bodyDesc->textContent;
+                $bodyDesc = $xpath->query(".//*[contains(@class, 'fancybox_body_desc')]", $infoPopup)->item(0);
                 
-                // Перевіряємо чи є повідомлення про ГАВ в HTML
-                // Шукаємо в усьому HTML, а не тільки в bodyDesc, бо повідомлення може бути в іншому місці
-                $emergencyMode = checkEmergencyMode($html);
-                
-                // Парсимо всі черги з HTML
-                $allQueues = parseAllQueues($text);
-                
-                // Якщо ГАВ активний, але графіки не оновлені (порожній або менше черг) - використовуємо графіки з кешу
-                if ($emergencyMode && (empty($allQueues) || count($allQueues) < count($cacheData['queues'] ?? []))) {
-                    // Використовуємо графіки з кешу, але залишаємо новий emergency_mode
-                    if ($cacheData !== null && isset($cacheData['queues']) && !empty($cacheData['queues'])) {
-                        $allQueues = $cacheData['queues'];
+                if (!$bodyDesc) {
+                    $fetchFailed = true;
+                    if ($cacheData !== null && isset($cacheData['queues'])) {
+                        $dataSource = 'cache';
+                    } else {
+                        $responseTime = (microtime(true) - $startTime) * 1000;
+                        
+                        logRequest([
+                            'queue' => $queue,
+                            'source' => $dataSource,
+                            'response_time_ms' => round($responseTime, 2),
+                            'success' => false,
+                            'ip' => getClientIp(),
+                            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                        ]);
+                        
+                        http_response_code(404);
+                        echo json_encode([
+                            'success' => false,
+                            'error' => 'Schedule content not found',
+                            'queue' => $queue,
+                            'source' => $sourceUrl
+                        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+                        exit;
                     }
+                } else {
+                    // Парсимо дані з сайту
+                    $text = $bodyDesc->textContent;
+                    $emergencyMode = checkEmergencyMode($html);
+                    $allQueues = parseAllQueues($text);
+                    
+                    if ($emergencyMode && (empty($allQueues) || count($allQueues) < count($cacheData['queues'] ?? []))) {
+                        if ($cacheData !== null && isset($cacheData['queues']) && !empty($cacheData['queues'])) {
+                            $allQueues = $cacheData['queues'];
+                        }
+                    }
+                    
+                    $cacheData = [
+                        'timestamp' => time(),
+                        'queues' => $allQueues,
+                        'emergency_mode' => $emergencyMode
+                    ];
+                    
+                    saveCache($cacheFile, $cacheData);
+                    $newDataObtained = true;
                 }
-                
-                // Зберігаємо дані в кеш
-                $cacheData = [
-                    'timestamp' => time(),
-                    'queues' => $allQueues,
-                    'emergency_mode' => $emergencyMode
-                ];
-                
-                // Спробуємо зберегти кеш, але не зупиняємо роботу якщо не вдалося
-                saveCache($cacheFile, $cacheData);
-                $newDataObtained = true;
             }
         }
     }
