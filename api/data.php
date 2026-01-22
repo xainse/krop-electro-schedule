@@ -9,7 +9,7 @@
  * - isDataFresh() - перевірка актуальності
  * - logApiRequest() - логування запитів
  * - saveTelegramMessage() - збереження Telegram повідомлення
- * - getTelegramMessages() - читання історії
+ * - getTelegramMessages() - читання історії Telegram
  * - cleanOldLogs() - очищення старих логів
  */
 
@@ -176,77 +176,6 @@ function logApiRequest($data) {
     if (file_exists($logFile)) {
         @chmod($logFile, 0644);
     }
-}
-
-/**
- * Зберігає RSS повідомлення в rss_messages.json
- * @param array $messageData Дані повідомлення
- * @return bool Успіх операції
- */
-function saveRSSMessage($messageData) {
-    // Створюємо папку якщо її немає
-    if (!is_dir(CACHE_DIR)) {
-        if (!@mkdir(CACHE_DIR, 0755, true)) {
-            return false;
-        }
-    }
-    
-    // Завантажуємо існуючі повідомлення
-    $messages = [];
-    if (file_exists(RSS_MESSAGES_FILE)) {
-        $messages = @json_decode(file_get_contents(RSS_MESSAGES_FILE), true) ?: [];
-    }
-    
-    // Додаємо нове повідомлення
-    $messageData['saved_at'] = time();
-    $messages[] = $messageData;
-    
-    // Обмежуємо кількість повідомлень (зберігаємо останні 100)
-    if (count($messages) > 100) {
-        $messages = array_slice($messages, -100);
-    }
-    
-    // Валідація JSON перед збереженням
-    $json = json_encode($messages, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    if ($json === false) {
-        return false;
-    }
-    
-    // Atomic write через temp file
-    $tempFile = RSS_MESSAGES_FILE . '.tmp';
-    if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
-        return false;
-    }
-    
-    // Встановлюємо права доступу
-    @chmod($tempFile, 0644);
-    
-    // Атомарно переміщуємо temp file на місце основного
-    if (!@rename($tempFile, RSS_MESSAGES_FILE)) {
-        @unlink($tempFile);
-        return false;
-    }
-    
-    return true;
-}
-
-/**
- * Читає історію RSS повідомлень
- * @param int $limit Максимальна кількість повідомлень
- * @return array Масив повідомлень
- */
-function getRSSMessages($limit = 100) {
-    if (!file_exists(RSS_MESSAGES_FILE)) {
-        return [];
-    }
-    
-    $messages = @json_decode(file_get_contents(RSS_MESSAGES_FILE), true);
-    if (!is_array($messages)) {
-        return [];
-    }
-    
-    // Повертаємо останні $limit повідомлень
-    return array_slice($messages, -$limit);
 }
 
 /**

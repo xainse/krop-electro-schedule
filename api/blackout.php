@@ -59,21 +59,22 @@ if (!$requestAll) {
 $sourceUrl = 'https://kiroe.com.ua/electricity-blackout';
 const CACHE_TTL = 600; // 10 хвилин в секундах
 
-// Завантажуємо fetcher'и
+// Завантажуємо fetcher
 require_once __DIR__ . '/telegram_fetcher.php';
-require_once __DIR__ . '/rss_fetcher.php';
 
 /**
- * Перевіряє чи минуло достатньо часу для перевірки RSS
- * @return bool true якщо можна перевіряти RSS
+ * Перевіряє чи минуло достатньо часу для перевірки джерел даних (Telegram)
+ * @return bool true якщо можна перевіряти джерела
  */
-function shouldCheckRSS() {
+function shouldCheckSources() {
     // Перевіряємо чи існує файл з timestamp останньої перевірки
-    if (!file_exists(LAST_RSS_CHECK_FILE)) {
+    $lastCheckFile = CACHE_DIR . '/last_source_check.txt';
+    
+    if (!file_exists($lastCheckFile)) {
         return true; // Файл не існує - можна перевіряти
     }
     
-    $lastCheck = @file_get_contents(LAST_RSS_CHECK_FILE);
+    $lastCheck = @file_get_contents($lastCheckFile);
     if ($lastCheck === false) {
         return true; // Помилка читання - можна перевіряти
     }
@@ -81,25 +82,27 @@ function shouldCheckRSS() {
     $lastCheckTime = (int)$lastCheck;
     $timePassed = time() - $lastCheckTime;
     
-    // Перевіряємо чи минуло RSS_CHECK_INTERVAL (5 хвилин)
-    return $timePassed >= RSS_CHECK_INTERVAL;
+    // Перевіряємо чи минуло TELEGRAM_CHECK_INTERVAL (5 хвилин)
+    return $timePassed >= TELEGRAM_CHECK_INTERVAL;
 }
 
 /**
- * Зберігає timestamp поточної перевірки RSS
+ * Зберігає timestamp поточної перевірки джерел
  * @return bool Успіх операції
  */
-function saveRSSCheckTimestamp() {
+function saveSourceCheckTimestamp() {
+    $lastCheckFile = CACHE_DIR . '/last_source_check.txt';
+    
     // Створюємо папку якщо її немає
-    $dir = dirname(LAST_RSS_CHECK_FILE);
+    $dir = dirname($lastCheckFile);
     if (!is_dir($dir)) {
         @mkdir($dir, 0755, true);
     }
     
-    $result = @file_put_contents(LAST_RSS_CHECK_FILE, time(), LOCK_EX);
+    $result = @file_put_contents($lastCheckFile, time(), LOCK_EX);
     
     if ($result !== false) {
-        @chmod(LAST_RSS_CHECK_FILE, 0644);
+        @chmod($lastCheckFile, 0644);
         return true;
     }
     
@@ -474,10 +477,10 @@ if ($forceRefresh) {
     $needUpdate = true;
 }
 
-// Якщо потрібно оновити - спробуємо завантажити дані через Telegram, RSS або сайт
+// Якщо потрібно оновити - спробуємо завантажити дані через Telegram або сайт
 if ($needUpdate) {
     // Перевіряємо чи можна перевіряти джерела (чи минуло 5 хвилин)
-    $canCheckSources = shouldCheckRSS();
+    $canCheckSources = shouldCheckSources();
     
     $fetchSuccess = false;
     
@@ -505,45 +508,14 @@ if ($needUpdate) {
             saveCache($cacheFile, $cacheData);
             
             // Зберігаємо timestamp перевірки
-            saveRSSCheckTimestamp();
+            saveSourceCheckTimestamp();
         } else {
             // Telegram не повернув дані або помилка
-            error_log("Telegram не повернув дані, використовуємо fallback на RSS");
+            error_log("Telegram не повернув дані, використовуємо fallback на сайт");
         }
     }
     
-    // 2. Якщо Telegram не спрацював - fallback на RSS
-    if (!$fetchSuccess && $canCheckSources) {
-        $dataSource = 'rss';
-        
-        // Визначаємо limit для RSS
-        $rssLimit = ($cacheData === false || !isset($cacheData['queues'])) ? 100 : 10;
-        
-        $rssData = fetchFromRSS($rssLimit);
-        
-        if ($rssData && !empty($rssData['queues'])) {
-            // RSS успішно повернув дані
-            $fetchSuccess = true;
-            $newDataObtained = true;
-            
-            // Оновлюємо кеш даними з RSS
-            $cacheData = [
-                'timestamp' => time(),
-                'queues' => $rssData['queues'],
-                'emergency_mode' => $rssData['emergency_mode']
-            ];
-            
-            saveCache($cacheFile, $cacheData);
-            
-            // Зберігаємо timestamp перевірки RSS
-            saveRSSCheckTimestamp();
-        } else {
-            // RSS не повернув дані або помилка
-            error_log("RSS не повернув дані, використовуємо fallback на сайт");
-        }
-    }
-    
-    // 3. Якщо ні Telegram, ні RSS не спрацювали - fallback на парсинг сайту
+    // 2. Якщо Telegram не спрацював - fallback на парсинг сайту
     if (!$fetchSuccess) {
         $dataSource = 'site';
         $html = fetchUrl($sourceUrl);
@@ -571,7 +543,7 @@ if ($needUpdate) {
                 http_response_code(404);
                 echo json_encode([
                     'success' => false,
-                    'error' => 'No data available: Telegram, RSS and site unavailable',
+                    'error' => 'No data available: Telegram and site unavailable',
                     'queue' => $queue,
                     'source' => $sourceUrl
                 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

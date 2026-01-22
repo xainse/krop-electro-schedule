@@ -5,6 +5,37 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [2.3] - 2026-01-22
+
+### Видалено
+- **RSS парсер (`api/rss_fetcher.php`)**: Видалено модуль отримання даних через RSS фід
+  - Функції `fetchFromRSS()`, `parseRSSItem()`, `extractTextFromHTML()`, `fetchRSSContent()`
+  - Документ `docs/RSS_MIGRATION_PLAN_2026-01-22.md`
+- **RSS функції в data.php**: Видалено `saveRSSMessage()` та `getRSSMessages()`
+- **RSS константи в config.php**: 
+  - `RSS_URL`
+  - `RSS_CHECK_INTERVAL`
+  - `RSS_MESSAGES_FILE`
+  - `LAST_RSS_CHECK_FILE`
+  - `SOURCE_RSS`
+
+### Змінено
+- **Архітектура fallback в blackout.php**: 
+  - Було: Telegram → RSS → Site
+  - Стало: Telegram → Site
+- **Функції перевірки джерел**:
+  - `shouldCheckRSS()` перейменовано на `shouldCheckSources()`
+  - `saveRSSCheckTimestamp()` перейменовано на `saveSourceCheckTimestamp()`
+  - Файл `last_rss_check.txt` замінено на `last_source_check.txt`
+- **Документація**: 
+  - Оновлено README.md - видалено згадки RSS
+  - Видалено розділ "План міграції на RSS" з документації
+
+### Причина
+- Спрощення архітектури проєкту
+- RSS фід був проміжним рівнем між Telegram і Site парсингом
+- Telegram Web Scraper надійніший і достатній як primary джерело
+
 ## [2.2] - 2026-01-22
 
 ### Додано
