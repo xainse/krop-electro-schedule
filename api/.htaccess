@@ -13,3 +13,16 @@
     RewriteRule ^(.*)$ $1 [R=200,L]
 </IfModule>
 
+# Безпека: Заборона доступу до конфігураційних файлів
+<Files "config.php">
+    Require all denied
+</Files>
+
+<Files "config.example.php">
+    Require all denied
+</Files>
+
+# Заборона доступу до службових PHP модулів
+<FilesMatch "^(data|parser|telegram_fetcher|site_fetcher)\.php$">
+    Require all denied
+</FilesMatch>

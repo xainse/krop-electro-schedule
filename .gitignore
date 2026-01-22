@@ -31,3 +31,6 @@ api/cache/
 # Log files
 api/logs/
 
+# Telegram Bot конфігурація (містить секретні токени)
+api/config.php
+
