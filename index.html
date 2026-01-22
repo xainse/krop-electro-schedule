@@ -93,7 +93,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '2.3';
+    const VERSION = '2.4';
     
     const titleEl = document.querySelector('.title');
     const queueSelect = document.getElementById('queueSelect');
@@ -781,6 +781,9 @@
           statusMsg.textContent = 'Показано невідомі значення';
           render(Array(48).fill(null));
         }
+        
+        // Оновлюємо таблицю всіх черг навіть при помилці
+        loadAllQueues();
       }
     }
 
@@ -850,6 +853,9 @@
 
     // Автоматичне оновлення даних кожні 10 хвилин
     setInterval(load, 10 * 60 * 1000);
+    
+    // Автоматичне оновлення таблиці всіх черг кожні 10 хвилин
+    setInterval(loadAllQueues, 10 * 60 * 1000);
   </script>
 </body>
 
