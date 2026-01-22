@@ -256,38 +256,28 @@ function saveCache($cacheFile, $data) {
     return $result !== false;
 }
 
+
 /**
- * Нормалізує графік відключень
- * @param string $schedule Сирий графік
- * @return string Нормалізований графік
+ * Парсить всі черги з HTML тексту
+ * @param string $text Текст з графіками черг
+ * @return array Асоціативний масив ['1.1' => 'schedule', '1.2' => 'schedule', ...]
  */
-function normalizeSchedule($schedule) {
-    // Нормалізуємо пробіли (замінюємо множинні пробіли/переноси на один пробіл)
-    $schedule = preg_replace('/[\s\n\r]+/', ' ', $schedule);
+function parseAllQueues($text) {
+    $queues = [];
     
-    // Видаляємо зайві пробіли навколо ком та дефісів
-    $schedule = preg_replace('/\s*,\s*/', ', ', $schedule);
-    $schedule = preg_replace('/\s*-\s*/', '-', $schedule);
+    // Шукаємо всі рядки формату "Черга X.X: діапазони"
+    // Використовуємо regex для знаходження всіх черг
+    $pattern = '/Черга\s+(\d+\.\d+)\s*:\s*(.+?)(?=\n\s*Черга\s+\d+\.\d+|$)/is';
     
-    // Видаляємо пробіли навколо двокрапки в часі (10:00-11:30)
-    $schedule = preg_replace('/\s*:\s*/', ':', $schedule);
+    if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+        foreach ($matches as $match) {
+            $queueNum = $match[1];
+            $schedule = normalizeSchedule($match[2]);
+            $queues[$queueNum] = $schedule;
+        }
+    }
     
-    // Нормалізуємо час: додаємо :00 до годин без хвилин
-    // Замінюємо формат "HH-HH" на "HH:00-HH:00"
-    // Наприклад: "06-08" → "06:00-08:00", "10:00-11:30" залишається як є
-    $schedule = preg_replace_callback('/(\d{1,2})(?::(\d{2}))?\-(\d{1,2})(?::(\d{2}))?/', function($matches) {
-        $startHour = $matches[1];
-        $startMin = isset($matches[2]) && $matches[2] !== '' ? $matches[2] : '00';
-        $endHour = $matches[3];
-        $endMin = isset($matches[4]) && $matches[4] !== '' ? $matches[4] : '00';
-        
-        // Якщо хвилини не вказані, встановлюємо 00
-        // Якщо хвилини вказані, залишаємо як є
-        return sprintf('%02d:%s-%02d:%s', $startHour, $startMin, $endHour, $endMin);
-    }, $schedule);
-    
-    // Фінальна очистка пробілів
-    return trim($schedule);
+    return $queues;
 }
 
 /**
@@ -355,28 +345,6 @@ function checkEmergencyMode($html) {
     return false;
 }
 
-/**
- * Парсить всі черги з HTML тексту
- * @param string $text Текст з графіками черг
- * @return array Асоціативний масив ['1.1' => 'schedule', '1.2' => 'schedule', ...]
- */
-function parseAllQueues($text) {
-    $queues = [];
-    
-    // Шукаємо всі рядки формату "Черга X.X: діапазони"
-    // Використовуємо regex для знаходження всіх черг
-    $pattern = '/Черга\s+(\d+\.\d+)\s*:\s*(.+?)(?=\n\s*Черга\s+\d+\.\d+|$)/is';
-    
-    if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
-        foreach ($matches as $match) {
-            $queueNum = $match[1];
-            $schedule = normalizeSchedule($match[2]);
-            $queues[$queueNum] = $schedule;
-        }
-    }
-    
-    return $queues;
-}
 
 // Завантажуємо HTML сторінку через curl (більш надійно для зовнішніх URL)
 // Сумісно з PHP 7.4
@@ -407,7 +375,7 @@ function fetchUrl($url) {
             $html = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $curlError = curl_error($ch);
-            curl_close($ch);
+            // curl_close не потрібен в PHP 8.0+
             
             if ($html !== false && $httpCode == 200 && strlen($html) > 0) {
                 return $html;
@@ -624,14 +592,22 @@ if ($needUpdate) {
                         }
                     }
                     
-                    $cacheData = [
-                        'timestamp' => time(),
-                        'queues' => $allQueues,
-                        'emergency_mode' => $emergencyMode
-                    ];
-                    
-                    saveCache($cacheFile, $cacheData);
-                    $newDataObtained = true;
+                    // ВИПРАВЛЕННЯ: Не оновлювати кеш якщо нові дані порожні
+                    if (!empty($allQueues)) {
+                        $cacheData = [
+                            'timestamp' => time(),
+                            'queues' => $allQueues,
+                            'emergency_mode' => $emergencyMode
+                        ];
+                        
+                        saveCache($cacheFile, $cacheData);
+                        $newDataObtained = true;
+                    } else {
+                        // Якщо нові дані порожні - використовуємо існуючий кеш
+                        // Залишаємо $cacheData як є (вже завантажений на початку)
+                        $dataSource = 'cache';
+                        error_log("Site parser повернув порожні дані, використовуємо кеш");
+                    }
                 }
             }
         }
