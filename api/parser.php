@@ -51,7 +51,7 @@ function parseScheduleMessage($text) {
 /**
  * Виявляє чи активний графік аварійних відключень (ГАВ)
  * @param string $text Текст повідомлення
- * @return bool
+ * @return bool|null true = активний, false = скасований, null = не визначено
  */
 function detectEmergencyMode($text) {
     // Спочатку перевіряємо чи ГАВ/СГАВ скасовано
@@ -77,8 +77,6 @@ function detectEmergencyMode($text) {
     // Шукаємо текст про введення ГАВ або СГАВ
     $activationPatterns = [
         '/введено\s+в\s+дію\s+графік\s+аварійних/ui',
-        '/графік\s+аварійних\s+відключень/ui',
-        '/ГАВ/u',
         '/введено\s+в\s+дію\s+спеціальний\s+графік\s+аварійних/ui',
         '/спеціальний\s+графік\s+аварійних\s+відключень/ui',
         '/СГАВ/u'
@@ -90,7 +88,7 @@ function detectEmergencyMode($text) {
         }
     }
     
-    return false;
+    return null; // Повідомлення не стосується зміни статусу ГАВ/СГАВ
 }
 
 /**

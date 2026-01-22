@@ -59,7 +59,8 @@ if (!$requestAll) {
 $sourceUrl = 'https://kiroe.com.ua/electricity-blackout';
 const CACHE_TTL = 600; // 10 хвилин в секундах
 
-// Завантажуємо RSS fetcher
+// Завантажуємо fetcher'и
+require_once __DIR__ . '/telegram_fetcher.php';
 require_once __DIR__ . '/rss_fetcher.php';
 
 /**
@@ -473,14 +474,46 @@ if ($forceRefresh) {
     $needUpdate = true;
 }
 
-// Якщо потрібно оновити - спробуємо завантажити дані через RSS або сайт
+// Якщо потрібно оновити - спробуємо завантажити дані через Telegram, RSS або сайт
 if ($needUpdate) {
-    // Перевіряємо чи можна перевіряти RSS (чи минуло 5 хвилин)
-    $canCheckRSS = shouldCheckRSS();
+    // Перевіряємо чи можна перевіряти джерела (чи минуло 5 хвилин)
+    $canCheckSources = shouldCheckRSS();
     
-    // Спочатку пробуємо RSS якщо дозволено
-    $rssSuccess = false;
-    if ($canCheckRSS) {
+    $fetchSuccess = false;
+    
+    // 1. Спочатку пробуємо Telegram (primary source) якщо дозволено
+    if ($canCheckSources) {
+        $dataSource = 'telegram';
+        
+        // Визначаємо limit для Telegram
+        $telegramLimit = ($cacheData === false || !isset($cacheData['queues'])) ? 10 : 10;
+        
+        $telegramData = fetchFromTelegram($telegramLimit);
+        
+        if ($telegramData && !empty($telegramData['queues'])) {
+            // Telegram успішно повернув дані
+            $fetchSuccess = true;
+            $newDataObtained = true;
+            
+            // Оновлюємо кеш даними з Telegram
+            $cacheData = [
+                'timestamp' => time(),
+                'queues' => $telegramData['queues'],
+                'emergency_mode' => $telegramData['emergency_mode']
+            ];
+            
+            saveCache($cacheFile, $cacheData);
+            
+            // Зберігаємо timestamp перевірки
+            saveRSSCheckTimestamp();
+        } else {
+            // Telegram не повернув дані або помилка
+            error_log("Telegram не повернув дані, використовуємо fallback на RSS");
+        }
+    }
+    
+    // 2. Якщо Telegram не спрацював - fallback на RSS
+    if (!$fetchSuccess && $canCheckSources) {
         $dataSource = 'rss';
         
         // Визначаємо limit для RSS
@@ -490,7 +523,7 @@ if ($needUpdate) {
         
         if ($rssData && !empty($rssData['queues'])) {
             // RSS успішно повернув дані
-            $rssSuccess = true;
+            $fetchSuccess = true;
             $newDataObtained = true;
             
             // Оновлюємо кеш даними з RSS
@@ -510,8 +543,8 @@ if ($needUpdate) {
         }
     }
     
-    // Якщо RSS не спрацював - fallback на парсинг сайту
-    if (!$rssSuccess) {
+    // 3. Якщо ні Telegram, ні RSS не спрацювали - fallback на парсинг сайту
+    if (!$fetchSuccess) {
         $dataSource = 'site';
         $html = fetchUrl($sourceUrl);
         
@@ -538,7 +571,7 @@ if ($needUpdate) {
                 http_response_code(404);
                 echo json_encode([
                     'success' => false,
-                    'error' => 'No data available: RSS failed and site unavailable',
+                    'error' => 'No data available: Telegram, RSS and site unavailable',
                     'queue' => $queue,
                     'source' => $sourceUrl
                 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

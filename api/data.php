@@ -294,4 +294,185 @@ function getClientIp() {
     
     return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 }
+
+/**
+ * Зберігає Telegram повідомлення в telegram_messages.json
+ * @param array $messageData Дані повідомлення
+ * @return bool Успіх операції
+ */
+function saveTelegramMessage($messageData) {
+    // Створюємо папку якщо її немає
+    if (!is_dir(CACHE_DIR)) {
+        if (!@mkdir(CACHE_DIR, 0755, true)) {
+            return false;
+        }
+    }
+    
+    // Завантажуємо існуючі дані
+    $data = [
+        'last_id' => 0,
+        'last_check' => time(),
+        'messages' => []
+    ];
+    
+    if (file_exists(TELEGRAM_MESSAGES_FILE)) {
+        $existing = @json_decode(file_get_contents(TELEGRAM_MESSAGES_FILE), true);
+        if ($existing && is_array($existing)) {
+            $data = $existing;
+        }
+    }
+    
+    // Додаємо нове повідомлення
+    $messageData['saved_at'] = time();
+    
+    // Перевіряємо чи повідомлення вже існує (за ID)
+    $exists = false;
+    foreach ($data['messages'] as $key => $msg) {
+        if ($msg['id'] === $messageData['id']) {
+            // Оновлюємо існуюче
+            $data['messages'][$key] = $messageData;
+            $exists = true;
+            break;
+        }
+    }
+    
+    if (!$exists) {
+        $data['messages'][] = $messageData;
+    }
+    
+    // Оновлюємо last_check
+    $data['last_check'] = time();
+    
+    // Обмежуємо кількість повідомлень (зберігаємо останні 100)
+    if (count($data['messages']) > 100) {
+        // Сортуємо за message_num від найбільшого до найменшого
+        usort($data['messages'], function($a, $b) {
+            return $b['message_num'] - $a['message_num'];
+        });
+        $data['messages'] = array_slice($data['messages'], 0, 100);
+    }
+    
+    // Валідація JSON перед збереженням
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    if ($json === false) {
+        return false;
+    }
+    
+    // Atomic write через temp file
+    $tempFile = TELEGRAM_MESSAGES_FILE . '.tmp';
+    if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
+        return false;
+    }
+    
+    // Встановлюємо права доступу
+    @chmod($tempFile, 0644);
+    
+    // Атомарно переміщуємо temp file на місце основного
+    if (!@rename($tempFile, TELEGRAM_MESSAGES_FILE)) {
+        @unlink($tempFile);
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * Читає історію Telegram повідомлень
+ * @param int $limit Максимальна кількість повідомлень
+ * @return array Масив повідомлень
+ */
+function getTelegramMessages($limit = 100) {
+    if (!file_exists(TELEGRAM_MESSAGES_FILE)) {
+        return [];
+    }
+    
+    $data = @json_decode(file_get_contents(TELEGRAM_MESSAGES_FILE), true);
+    if (!is_array($data) || !isset($data['messages'])) {
+        return [];
+    }
+    
+    $messages = $data['messages'];
+    
+    // Сортуємо від найновішого до найстарішого
+    usort($messages, function($a, $b) {
+        return $b['message_num'] - $a['message_num'];
+    });
+    
+    // Повертаємо останні $limit повідомлень
+    return array_slice($messages, 0, $limit);
+}
+
+/**
+ * Отримує ID останнього обробленого Telegram повідомлення
+ * @return int|null ID або null якщо ще не було обробки
+ */
+function getLastTelegramId() {
+    if (!file_exists(TELEGRAM_MESSAGES_FILE)) {
+        return null;
+    }
+    
+    $data = @json_decode(file_get_contents(TELEGRAM_MESSAGES_FILE), true);
+    if (!is_array($data) || !isset($data['last_id'])) {
+        return null;
+    }
+    
+    return $data['last_id'] > 0 ? $data['last_id'] : null;
+}
+
+/**
+ * Зберігає ID останнього обробленого Telegram повідомлення
+ * @param int $id ID повідомлення
+ * @return bool Успіх операції
+ */
+function saveLastTelegramId($id) {
+    // Створюємо папку якщо її немає
+    if (!is_dir(CACHE_DIR)) {
+        if (!@mkdir(CACHE_DIR, 0755, true)) {
+            return false;
+        }
+    }
+    
+    // Завантажуємо існуючі дані
+    $data = [
+        'last_id' => 0,
+        'last_check' => time(),
+        'messages' => []
+    ];
+    
+    if (file_exists(TELEGRAM_MESSAGES_FILE)) {
+        $existing = @json_decode(file_get_contents(TELEGRAM_MESSAGES_FILE), true);
+        if ($existing && is_array($existing)) {
+            $data = $existing;
+        }
+    }
+    
+    // Оновлюємо last_id тільки якщо новий ID більший
+    if ($id > $data['last_id']) {
+        $data['last_id'] = $id;
+        $data['last_check'] = time();
+    }
+    
+    // Валідація JSON перед збереженням
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    if ($json === false) {
+        return false;
+    }
+    
+    // Atomic write через temp file
+    $tempFile = TELEGRAM_MESSAGES_FILE . '.tmp';
+    if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
+        return false;
+    }
+    
+    // Встановлюємо права доступу
+    @chmod($tempFile, 0644);
+    
+    // Атомарно переміщуємо temp file на місце основного
+    if (!@rename($tempFile, TELEGRAM_MESSAGES_FILE)) {
+        @unlink($tempFile);
+        return false;
+    }
+    
+    return true;
+}
 ?>
