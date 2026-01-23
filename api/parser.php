@@ -114,7 +114,8 @@ function extractQueues($text) {
     $queues = [];
     
     // Шукаємо всі рядки формату "Черга X.X: діапазони"
-    $pattern = '/Черга\s+(\d+\.\d+)\s*:\s*(.+?)(?=\n\s*Черга\s+\d+\.\d+|\n\n|$)/uis';
+    // Використовуємо негативний lookahead, щоб захопити текст до наступної "Черга X.X" або кінця рядка
+    $pattern = '/Черга\s+(\d+\.\d+)\s*:\s*((?:(?!Черга\s+\d+\.\d+).)+)/uis';
     
     if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
         foreach ($matches as $match) {
