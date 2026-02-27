@@ -93,7 +93,22 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '2.4';
+    const VERSION = '2.5';
+    
+    // fetch з таймаутом (мс), щоб не чекати надто довго при недоступному API
+    const API_FETCH_TIMEOUT_MS = 15000;
+    async function fetchWithTimeout(url, opts = {}) {
+      const ac = new AbortController();
+      const id = setTimeout(() => ac.abort(), API_FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, { ...opts, signal: ac.signal });
+        clearTimeout(id);
+        return res;
+      } catch (e) {
+        clearTimeout(id);
+        throw e;
+      }
+    }
     
     // Допоміжна функція для отримання поточної години в Україні
     // Використовується для підсвічування активного сегменту
@@ -114,7 +129,7 @@
     const emergencyMsg = document.getElementById('emergencyMsg');
     let currentQueue = localStorage.getItem('queue') || '1.1';
     queueSelect.value = currentQueue;
-    let API_URL = `https://xain.in.ua/api/blackout.php?queue=${currentQueue}`;
+    let API_URL = apiUrl('api/blackout.php') + '?queue=' + currentQueue;
     const gridEl = document.getElementById('grid');
     const updatedMeta = document.getElementById('updatedMeta');
     const errorMsg = document.getElementById('errorMsg');
@@ -566,7 +581,7 @@
     // Функція для завантаження даних всіх черг
     async function loadAllQueues() {
       try {
-        const res = await fetch('https://xain.in.ua/api/blackout.php?all=1', { cache: 'no-store' });
+        const res = await fetchWithTimeout(apiUrl('api/blackout.php') + '?all=1', { cache: 'no-store' });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status} ${res.statusText}`);
         }
@@ -661,8 +676,8 @@
       // Не приховуємо apiErrorMsg тут, щоб зберегти повідомлення про застарілі дані під час завантаження
       statusMsg.textContent = 'Завантаження…';
       try {
-        // Викликаємо API напряму (без proxy)
-        const res = await fetch(API_URL, { cache: 'no-store' });
+        // Викликаємо API з таймаутом
+        const res = await fetchWithTimeout(API_URL, { cache: 'no-store' });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status} ${res.statusText}`);
         }
@@ -772,6 +787,12 @@
       } catch (err) {
         console.error('Помилка завантаження даних:', err);
         
+        const isNetworkError = err.name === 'TypeError' && (err.message === 'Failed to fetch' || err.message.includes('fetch'));
+        const isTimeout = err.name === 'AbortError';
+        const networkHint = (isNetworkError || isTimeout)
+          ? ' Можливі причини: таймаут, зміна сертифікатів/хостингу, недоступність сервера. Якщо API переїхав — відкрийте сторінку з параметром: ?api_base=https://нова-адреса'
+          : '';
+        
         // Якщо є збережені дані - показуємо їх замість невідомих значень
         if (lastSuccessfulData !== null) {
           render(lastSuccessfulData);
@@ -783,9 +804,11 @@
           updatedMeta.style.color = '#dc2626';
           
           statusMsg.textContent = 'Показано останні доступні дані';
+          apiErrorMsg.textContent = 'Не вдалося підключитися до API.' + networkHint;
+          apiErrorMsg.style.display = 'block';
         } else {
-          // Якщо немає збережених даних - показуємо помилку як раніше
-          const userMessage = 'Не вдалося отримати дані з API. ' + err.message;
+          // Якщо немає збережених даних - показуємо помилку з підказкою
+          const userMessage = 'Не вдалося отримати дані з API. ' + (isNetworkError || isTimeout ? 'Перевірте доступність сервера та інтернет.' : err.message) + networkHint;
           errorMsg.textContent = userMessage;
           errorMsg.style.display = 'block';
           statusMsg.textContent = 'Показано невідомі значення';
@@ -822,7 +845,7 @@
     
     // Застосовуємо поточну чергу до заголовка
     function applyQueue() {
-      API_URL = `https://xain.in.ua/api/blackout.php?queue=${currentQueue}`;
+      API_URL = apiUrl('api/blackout.php') + '?queue=' + currentQueue;
       if (titleEl) titleEl.textContent = `Графік відключень — черга ${currentQueue}`;
       document.title = `Графік ${currentQueue} — 24 години`;
     }
