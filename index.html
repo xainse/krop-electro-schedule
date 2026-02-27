@@ -93,7 +93,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '2.5';
+    const VERSION = '2.6';
     
     // fetch з таймаутом (мс), щоб не чекати надто довго при недоступному API
     const API_FETCH_TIMEOUT_MS = 15000;
@@ -121,6 +121,10 @@
         hour12: false
       });
       return parseInt(ukraineTime, 10);
+    }
+
+    function apiUrl(path) {
+      return path;
     }
 
     const titleEl = document.querySelector('.title');

@@ -5,6 +5,11 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [2.6] - 2026-02-27
+
+### Виправлено
+- **ReferenceError: apiUrl is not defined**: додано визначення функції `apiUrl(path)` в index.html (виклики були додані в 2.5, сама функція не була оголошена)
+
 ## [2.5] - 2026-02-27
 
 ### Додано
