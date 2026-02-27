@@ -1,5 +1,12 @@
 # ⚡ Графік відключень електрики
 
+[![GitHub stars](https://img.shields.io/github/stars/xainse/krop-electro-schedule)](https://github.com/xainse/krop-electro-schedule/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/xainse/krop-electro-schedule)](https://github.com/xainse/krop-electro-schedule/network/members)
+[![GitHub last commit](https://img.shields.io/github/last-commit/xainse/krop-electro-schedule)](https://github.com/xainse/krop-electro-schedule/commits/main)
+[![GitHub language count](https://img.shields.io/github/languages/count/xainse/krop-electro-schedule)](https://github.com/xainse/krop-electro-schedule)
+[![GitHub top language](https://img.shields.io/github/languages/top/xainse/krop-electro-schedule)](https://github.com/xainse/krop-electro-schedule)
+[![Tests](https://img.shields.io/badge/tests-Jest%20%2B%20PHPUnit-blue)](https://github.com/xainse/krop-electro-schedule)
+
 Веб-додаток для відображення графіку відключень електрики на 24 години з підтримкою всіх черг (1.1-6.2).
 
 ## 📋 Опис
@@ -55,7 +62,7 @@ API кешує дані на 24 години та логує всі запити
 
 ## 📝 Версія
 
-Поточна версія: **2.7** *(джерело: `const VERSION` в index.html; оновити: `node scripts/sync-readme-version.js`)*
+Поточна версія: **2.8**
 
 ## 📚 Документація
 

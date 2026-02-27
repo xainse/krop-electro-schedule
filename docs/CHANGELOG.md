@@ -5,6 +5,11 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [2.8] - 2026-02-27
+
+### Додано
+- Бейджі Shields.io в README.md: GitHub (stars, forks, last commit), мови проєкту, статичний бейдж тестів (Jest + PHPUnit).
+
 ## [2.7] - 2026-02-27
 
 ### Виправлено
