@@ -93,8 +93,20 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '2.6';
+    const VERSION = '2.7';
     
+    // Базовий URL API: з query ?api_base=..., на GitHub Pages — дефолт xain.in.ua, інакше відносний шлях
+    let apiBase = '';
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const base = params.get('api_base');
+      if (base != null && base !== '') {
+        apiBase = base.replace(/\/$/, '');
+      } else if (window.location.origin && window.location.origin.indexOf('github.io') !== -1) {
+        apiBase = 'https://xain.in.ua';
+      }
+    })();
+
     // fetch з таймаутом (мс), щоб не чекати надто довго при недоступному API
     const API_FETCH_TIMEOUT_MS = 15000;
     async function fetchWithTimeout(url, opts = {}) {
@@ -124,7 +136,8 @@
     }
 
     function apiUrl(path) {
-      return path;
+      if (!apiBase) return path;
+      return apiBase.replace(/\/$/, '') + (path.startsWith('/') ? path : '/' + path);
     }
 
     const titleEl = document.querySelector('.title');
