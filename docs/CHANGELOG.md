@@ -5,6 +5,19 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [2.5] - 2026-02-27
+
+### Додано
+- **Тестова інфраструктура**: Комплексні автоматичні тести для frontend та backend
+  - Frontend (Jest + jsdom): 62 тести — parseHalfHourSchedule, normalizeTo24, hoursFromIntervals, calculateDailyStats, formatHoursText, hasScheduleChanged, render, initialGrid
+  - Backend (PHPUnit): 61 тест — ParserTest, ValidationTest, ParseAllQueuesTest, EmergencyModeTest
+- **fetchWithTimeout**: fetch з таймаутом 15 секунд для надійнішої роботи з API
+- **Правило тестування в .cursorrules**: обов'язковий запуск тестів перед кожним комітом
+
+### Змінено
+- API URL тепер використовує `apiUrl()` замість hardcoded URL
+- Покращена обробка помилок мережі з підказками для користувача
+
 ## [2.4] - 2026-01-22
 
 ### Виправлено

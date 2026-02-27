@@ -34,3 +34,8 @@ api/logs/
 # Telegram Bot конфігурація (містить секретні токени)
 api/config.php
 
+# Test dependencies
+tests/frontend/node_modules/
+tests/backend/vendor/
+tests/backend/.phpunit.result.cache
+
