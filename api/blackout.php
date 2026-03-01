@@ -649,8 +649,9 @@ if ($requestAll) {
 }
 
 // Отримуємо графік для запитуваної черги
-$schedule = '';
-if (isset($cacheData['queues'][$queue])) {
+// null = черги немає в кеші (немає інформації); "" або "-" = черга в кеші, відключень немає
+$schedule = null;
+if (array_key_exists($queue, $cacheData['queues'] ?? [])) {
     $schedule = $cacheData['queues'][$queue];
 }
 

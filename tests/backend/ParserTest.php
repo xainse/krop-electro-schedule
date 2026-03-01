@@ -97,6 +97,16 @@ class ParserTest extends TestCase
         $this->assertEmpty($queues);
     }
 
+    /** Черга з "-" (немає відключень) має потрапляти в результат з порожнім графіком */
+    public function testExtractQueuesAcceptsNoBlackoutsDash(): void
+    {
+        $text = "Черга 1.1: -";
+        $queues = extractQueues($text);
+        $this->assertCount(1, $queues);
+        $this->assertArrayHasKey('1.1', $queues);
+        $this->assertSame('', $queues['1.1']);
+    }
+
     // --- normalizeSchedule ---
 
     public function testNormalizeScheduleAddsMinutes(): void

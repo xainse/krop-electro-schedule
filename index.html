@@ -93,7 +93,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '2.8';
+    const VERSION = '2.9';
     
     // Базовий URL API: з query ?api_base=..., на GitHub Pages — дефолт xain.in.ua, інакше відносний шлях
     let apiBase = '';
@@ -274,6 +274,15 @@
 
     // Гнучкий парсер відповіді API → масив із 48 елементів (півгодинні періоди): true (є), false (відключено), null (невідомо)
     function normalizeTo24(data) {
+      // 0) Порожній графік або "-" = немає відключень (усі години зі світлом)
+      if (data && typeof data.schedule === 'string') {
+        const s = data.schedule.trim();
+        if (s === '' || s === '-') {
+          statusMsg.textContent = 'Графік: відключень немає (усі години зі світлом)';
+          return parseHalfHourSchedule('');
+        }
+      }
+
       // 1) Якщо є schedule з діапазонами з хвилинами (наприклад: "06:00-08:00, 10:00-11:30")
       if (data?.schedule && typeof data.schedule === 'string') {
         // Перевіряємо чи є хвилини в форматі (наявність ":")
@@ -636,11 +645,10 @@
         queueCell.textContent = queue;
         row.appendChild(queueCell);
         
-        // Отримуємо дані для цієї черги
+        // Отримуємо дані для цієї черги (schedule може бути "" або "-" = немає відключень)
         const schedule = queuesData[queue];
         let periods = null;
-        if (schedule) {
-          // Використовуємо normalizeTo24 для обробки даних
+        if (schedule !== undefined && schedule !== null) {
           const data = { schedule: schedule };
           periods = normalizeTo24(data);
         }

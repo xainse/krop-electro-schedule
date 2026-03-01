@@ -91,6 +91,24 @@ describe('normalizeTo24', () => {
     expect(result[30]).toBe(true);
   });
 
+  test('empty schedule (no blackouts) returns 48 true', () => {
+    const result = normalizeTo24({ success: true, queue: '1.1', schedule: '' });
+    expect(result).toHaveLength(48);
+    expect(result.every(v => v === true)).toBe(true);
+  });
+
+  test('schedule "-" (no blackouts) returns 48 true', () => {
+    const result = normalizeTo24({ success: true, queue: '1.1', schedule: '-' });
+    expect(result).toHaveLength(48);
+    expect(result.every(v => v === true)).toBe(true);
+  });
+
+  test('schedule null (no data for queue) returns 48 nulls', () => {
+    const result = normalizeTo24({ success: true, queue: '1.1', schedule: null });
+    expect(result).toHaveLength(48);
+    expect(result.every(v => v === null)).toBe(true);
+  });
+
   test('unknown format returns 48 nulls', () => {
     const result = normalizeTo24({ foo: 'bar' });
     expect(result).toHaveLength(48);

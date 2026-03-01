@@ -124,8 +124,15 @@ function extractQueues($text) {
             
             // Нормалізуємо графік
             $schedule = normalizeSchedule($scheduleRaw);
-            
-            // Валідуємо графік
+            $scheduleTrimmed = trim($schedule);
+
+            // "Черга X.X: -" або порожній графік = немає відключень (усі години зі світлом)
+            if ($scheduleTrimmed === '' || $scheduleTrimmed === '-') {
+                $queues[$queueNum] = '';
+                continue;
+            }
+
+            // Валідуємо графік з діапазонами
             if (validateSchedule($schedule)) {
                 $queues[$queueNum] = $schedule;
             }
