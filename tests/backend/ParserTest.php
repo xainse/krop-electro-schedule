@@ -64,10 +64,33 @@ class ParserTest extends TestCase
         $this->assertFalse(extractDate('No date here'));
     }
 
-    public function testExtractDateFindsFirstDate(): void
+    public function testExtractDateFindsContextualDate(): void
     {
         $text = 'Графіки на 23.01.2026 та 24.01.2026';
         $this->assertSame('23.01.2026', extractDate($text));
+    }
+
+    public function testExtractDateResolvesTomorrow(): void
+    {
+        $ref = strtotime('2026-03-01 18:00:00');
+        $this->assertSame('02.03.2026', extractDate('Графіки на завтра', $ref));
+    }
+
+    public function testExtractDateResolvesToday(): void
+    {
+        $ref = strtotime('2026-03-01 10:00:00');
+        $this->assertSame('01.03.2026', extractDate('Графіки на сьогодні', $ref));
+    }
+
+    public function testExtractDatePrefersContextualOverPlain(): void
+    {
+        $text = 'Опубліковано 01.03.2026. Графіки на 02.03.2026';
+        $this->assertSame('02.03.2026', extractDate($text));
+    }
+
+    public function testExtractDateSingleDigitDayMonth(): void
+    {
+        $this->assertSame('05.03.2026', extractDate('Графіки на 5.3.2026'));
     }
 
     // --- extractQueues ---

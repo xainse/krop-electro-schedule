@@ -17,42 +17,167 @@
 require_once __DIR__ . '/config.php';
 
 /**
- * Читає графіки з schedules.json
- * @param string|null $queue Номер черги (наприклад '1.1') або null для всіх
- * @return array|null Дані графіка або null при помилці
+ * Конвертує дату DD.MM.YYYY → YYYY-MM-DD (для ключів/сортування)
  */
-function getSchedules($queue = null) {
+function dateToKey($dateDMY) {
+    $parts = explode('.', $dateDMY);
+    if (count($parts) !== 3) return false;
+    return $parts[2] . '-' . $parts[1] . '-' . $parts[0];
+}
+
+/**
+ * Конвертує дату YYYY-MM-DD → DD.MM.YYYY
+ */
+function keyToDate($dateISO) {
+    $parts = explode('-', $dateISO);
+    if (count($parts) !== 3) return false;
+    return $parts[2] . '.' . $parts[1] . '.' . $parts[0];
+}
+
+/**
+ * Завантажує та за потреби мігрує schedules.json у формат v2 (по датах)
+ * @return array Структура v2: ['version' => 2, 'dates' => [...]]
+ */
+function loadSchedulesFile() {
     if (!file_exists(SCHEDULES_FILE)) {
-        return null;
+        return ['version' => 2, 'dates' => []];
     }
-    
-    $data = @json_decode(file_get_contents(SCHEDULES_FILE), true);
-    if (!$data) {
-        return null;
+
+    $raw = @json_decode(file_get_contents(SCHEDULES_FILE), true);
+    if (!$raw || !is_array($raw)) {
+        return ['version' => 2, 'dates' => []];
     }
-    
-    if ($queue === null) {
-        // Повертаємо всі черги
-        return $data;
+
+    if (isset($raw['version']) && $raw['version'] === 2) {
+        return $raw;
     }
-    
-    // Повертаємо конкретну чергу
-    if (isset($data['queues'][$queue])) {
+
+    // Міграція зі старого формату (один об'єкт з полями date, queues, ...)
+    if (isset($raw['queues']) && is_array($raw['queues'])) {
+        $dateDMY = $raw['date'] ?? date('d.m.Y', $raw['timestamp'] ?? time());
+        $key = dateToKey($dateDMY);
+        if ($key === false) {
+            return ['version' => 2, 'dates' => []];
+        }
         return [
-            'queue' => $queue,
-            'schedule' => $data['queues'][$queue],
-            'timestamp' => $data['timestamp'],
-            'date' => $data['date'] ?? date('d.m.Y', $data['timestamp']),
-            'emergency_mode' => $data['emergency_mode'] ?? false,
-            'source' => $data['source'] ?? 'unknown'
+            'version' => 2,
+            'dates' => [
+                $key => [
+                    'date' => $dateDMY,
+                    'timestamp' => $raw['timestamp'] ?? time(),
+                    'emergency_mode' => $raw['emergency_mode'] ?? false,
+                    'source' => $raw['source'] ?? 'unknown',
+                    'queues' => $raw['queues']
+                ]
+            ]
         ];
     }
-    
+
+    return ['version' => 2, 'dates' => []];
+}
+
+/**
+ * Атомарно записує структуру v2 у schedules.json
+ */
+function writeSchedulesFile($data) {
+    if (!is_dir(CACHE_DIR)) {
+        if (!@mkdir(CACHE_DIR, 0755, true)) {
+            return false;
+        }
+    }
+
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    if ($json === false) {
+        return false;
+    }
+
+    $tempFile = SCHEDULES_FILE . '.tmp';
+    if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
+        return false;
+    }
+    @chmod($tempFile, 0644);
+
+    if (!@rename($tempFile, SCHEDULES_FILE)) {
+        @unlink($tempFile);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Видаляє з структури дати, які строго менші за сьогодні
+ */
+function cleanPastSchedules(&$data) {
+    $todayKey = date('Y-m-d');
+    foreach (array_keys($data['dates']) as $key) {
+        if ($key < $todayKey) {
+            unset($data['dates'][$key]);
+        }
+    }
+}
+
+/**
+ * Визначає "актуальну" дату: найближча дата >= сьогодні серед збережених
+ * @return string|null Ключ дати (YYYY-MM-DD) або null
+ */
+function resolveCurrentDateKey($data) {
+    if (empty($data['dates'])) {
+        return null;
+    }
+    $todayKey = date('Y-m-d');
+    $keys = array_keys($data['dates']);
+    sort($keys);
+
+    foreach ($keys as $k) {
+        if ($k >= $todayKey) {
+            return $k;
+        }
+    }
     return null;
 }
 
 /**
- * Зберігає графіки в schedules.json
+ * Читає графіки з schedules.json (формат v2 — по датах)
+ * @param string|null $queue Номер черги ('1.1') або null для всіх
+ * @return array|null Дані графіка у сумісному форматі або null
+ */
+function getSchedules($queue = null) {
+    $store = loadSchedulesFile();
+    cleanPastSchedules($store);
+
+    $dateKey = resolveCurrentDateKey($store);
+    if ($dateKey === null) {
+        return null;
+    }
+
+    $entry = $store['dates'][$dateKey];
+
+    if ($queue === null) {
+        return [
+            'timestamp' => $entry['timestamp'],
+            'date' => $entry['date'],
+            'emergency_mode' => $entry['emergency_mode'] ?? false,
+            'source' => $entry['source'] ?? 'unknown',
+            'queues' => $entry['queues']
+        ];
+    }
+
+    if (isset($entry['queues'][$queue])) {
+        return [
+            'queue' => $queue,
+            'schedule' => $entry['queues'][$queue],
+            'timestamp' => $entry['timestamp'],
+            'date' => $entry['date'],
+            'emergency_mode' => $entry['emergency_mode'] ?? false,
+            'source' => $entry['source'] ?? 'unknown'
+        ];
+    }
+
+    return null;
+}
+
+/**
+ * Зберігає графіки в schedules.json (формат v2 — по датах)
  * @param array $queues Асоціативний масив черг ['1.1' => 'schedule', ...]
  * @param string $date Дата графіку (формат: DD.MM.YYYY)
  * @param bool $emergencyMode Чи активний ГАВ
@@ -61,78 +186,62 @@ function getSchedules($queue = null) {
  * @return bool Успіх операції
  */
 function saveSchedules($queues, $date, $emergencyMode, $source, $rawMessage = '') {
-    // Створюємо папку якщо її немає
-    if (!is_dir(CACHE_DIR)) {
-        if (!@mkdir(CACHE_DIR, 0755, true)) {
-            return false;
-        }
+    $store = loadSchedulesFile();
+
+    $key = dateToKey($date);
+    if ($key === false) {
+        return false;
     }
-    
-    $data = [
-        'timestamp' => time(),
+
+    $entry = [
         'date' => $date,
+        'timestamp' => time(),
         'emergency_mode' => (bool)$emergencyMode,
         'source' => $source,
         'queues' => $queues
     ];
-    
     if ($rawMessage) {
-        $data['raw_message'] = $rawMessage;
+        $entry['raw_message'] = $rawMessage;
     }
-    
-    // Валідація JSON перед збереженням
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    if ($json === false) {
-        return false;
-    }
-    
-    // Atomic write через temp file
-    $tempFile = SCHEDULES_FILE . '.tmp';
-    if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
-        return false;
-    }
-    
-    // Встановлюємо права доступу
-    @chmod($tempFile, 0644);
-    
-    // Атомарно переміщуємо temp file на місце основного
-    if (!@rename($tempFile, SCHEDULES_FILE)) {
-        @unlink($tempFile);
-        return false;
-    }
-    
-    return true;
+
+    $store['dates'][$key] = $entry;
+
+    cleanPastSchedules($store);
+
+    return writeSchedulesFile($store);
 }
 
 /**
- * Перевіряє чи файл schedules.json існує та не порожній
+ * Перевіряє чи є актуальні графіки (>= сьогодні)
  * @return bool
  */
 function isDataEmpty() {
-    if (!file_exists(SCHEDULES_FILE)) {
+    $store = loadSchedulesFile();
+    cleanPastSchedules($store);
+    $dateKey = resolveCurrentDateKey($store);
+    if ($dateKey === null) {
         return true;
     }
-    
-    $data = @json_decode(file_get_contents(SCHEDULES_FILE), true);
-    return empty($data) || empty($data['queues']);
+    return empty($store['dates'][$dateKey]['queues']);
 }
 
 /**
- * Перевіряє чи дані в schedules.json свіжі
+ * Перевіряє чи дані в schedules.json свіжі (для актуальної дати)
  * @param int $ttl Час життя в секундах
  * @return bool
  */
 function isDataFresh($ttl = DATA_TTL) {
-    if (!file_exists(SCHEDULES_FILE)) {
+    $store = loadSchedulesFile();
+    cleanPastSchedules($store);
+    $dateKey = resolveCurrentDateKey($store);
+    if ($dateKey === null) {
         return false;
     }
-    
-    $data = @json_decode(file_get_contents(SCHEDULES_FILE), true);
-    if (!$data || !isset($data['timestamp'])) {
+    $entry = $store['dates'][$dateKey];
+    if (!isset($entry['timestamp'])) {
         return false;
     }
-    
-    $age = time() - $data['timestamp'];
+    $age = time() - $entry['timestamp'];
     return $age < $ttl;
 }
 

@@ -151,6 +151,7 @@ if ($requestAll) {
         'queues' => $data['queues'] ?? [],
         'emergency_mode' => $data['emergency_mode'] ?? false,
         'updated' => $data['timestamp'] ?? null,
+        'date' => $data['date'] ?? null,
         'source' => $dataSource
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 } else {
@@ -170,6 +171,7 @@ if ($requestAll) {
         'schedule' => $data['schedule'] ?? '',
         'emergency_mode' => $data['emergency_mode'] ?? false,
         'updated' => $data['timestamp'] ?? null,
+        'date' => $data['date'] ?? null,
         'source' => $dataSource
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 }

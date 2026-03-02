@@ -56,35 +56,27 @@ function fetchFromTelegram($limit = 10) {
         return false;
     }
     
-    // Обробляємо повідомлення від найновішого до найстарішого
-    $newestSchedule = null;
-    $newestDate = null;
+    // Збираємо графіки по кожній унікальній даті та визначаємо ГАВ/СГАВ
+    $schedulesByDate = []; // date => parsed (найновіше повідомлення для кожної дати)
     $emergencyModeDetected = false;
     $emergencyModeTime = 0;
     $maxMessageId = $lastKnownId ?? 0;
     
     foreach ($messages as $messageData) {
-        // Оновлюємо максимальний ID
         if ($messageData['message_num'] > $maxMessageId) {
             $maxMessageId = $messageData['message_num'];
         }
         
-        // Перевіряємо чи є зміна статусу ГАВ/СГАВ в тексті
-        // null = повідомлення не про ГАВ, true = активовано, false = скасовано
         $itemEmergencyMode = detectEmergencyMode($messageData['text']);
         $itemTime = strtotime($messageData['datetime']);
         
-        // Якщо знайдено повідомлення про зміну статусу ГАВ/СГАВ
-        // і це найновіше таке повідомлення - зберігаємо його статус
         if ($itemEmergencyMode !== null && $itemTime > $emergencyModeTime) {
-            $emergencyModeDetected = $itemEmergencyMode; // true або false
+            $emergencyModeDetected = $itemEmergencyMode;
             $emergencyModeTime = $itemTime;
         }
         
-        // Парсимо повідомлення
         $parsed = parseScheduleMessage($messageData['text']);
         
-        // Зберігаємо в історію Telegram повідомлень
         saveTelegramMessage([
             'id' => $messageData['id'],
             'message_num' => $messageData['message_num'],
@@ -95,65 +87,62 @@ function fetchFromTelegram($limit = 10) {
             'has_schedule' => $parsed !== false && !empty($parsed['queues'])
         ]);
         
-        // Якщо знайдено графік, зберігаємо найновіший
         if ($parsed && !empty($parsed['queues'])) {
-            // Порівнюємо дати, якщо вже є збережений графік
-            if ($newestSchedule === null) {
-                $newestSchedule = $parsed;
-                $newestDate = $parsed['date'];
+            $dateKey = $parsed['date'];
+            if (!isset($schedulesByDate[$dateKey])) {
+                $schedulesByDate[$dateKey] = $parsed;
             } else {
-                // Порівнюємо дати (формат DD.MM.YYYY)
-                $currentTimestamp = strtotime(str_replace('.', '-', $parsed['date']));
-                $savedTimestamp = strtotime(str_replace('.', '-', $newestDate));
-                
-                if ($currentTimestamp > $savedTimestamp) {
-                    $newestSchedule = $parsed;
-                    $newestDate = $parsed['date'];
+                $existingKey = dateToKey($schedulesByDate[$dateKey]['date']);
+                $newKey = dateToKey($parsed['date']);
+                if ($newKey !== false && $existingKey !== false) {
+                    $schedulesByDate[$dateKey] = $parsed;
                 }
             }
         }
     }
     
-    // Оновлюємо останній оброблений ID
     if ($maxMessageId > ($lastKnownId ?? 0)) {
         saveLastTelegramId($maxMessageId);
     }
     
-    // Якщо знайдено зміну статусу ГАВ/СГАВ, застосовуємо його до графіку
-    // Враховуємо, що якщо $emergencyModeTime > 0, то був знайдений статус
-    if ($newestSchedule && $emergencyModeTime > 0) {
-        $newestSchedule['emergency_mode'] = $emergencyModeDetected;
-    }
-    
-    // Якщо знайдено графік - зберігаємо та повертаємо
-    if ($newestSchedule && !empty($newestSchedule['queues'])) {
+    // Зберігаємо графіки для кожної знайденої дати
+    $lastSaved = null;
+    foreach ($schedulesByDate as $parsed) {
+        $em = $parsed['emergency_mode'];
+        if ($emergencyModeTime > 0) {
+            $em = $emergencyModeDetected;
+        }
         $saved = saveSchedules(
-            $newestSchedule['queues'],
-            $newestSchedule['date'],
-            $newestSchedule['emergency_mode'],
+            $parsed['queues'],
+            $parsed['date'],
+            $em,
             SOURCE_TELEGRAM,
-            '' // raw_message можна зберегти при потребі
+            ''
         );
-        
         if ($saved) {
-            return $newestSchedule;
+            $lastSaved = [
+                'date' => $parsed['date'],
+                'emergency_mode' => $em,
+                'queues' => $parsed['queues']
+            ];
         }
     }
     
-    // Якщо графіку немає, але є зміна статусу ГАВ/СГАВ - оновлюємо тільки статус
-    if (!$newestSchedule && $emergencyModeTime > 0) {
-        // Завантажуємо поточний збережений графік
+    if ($lastSaved) {
+        return $lastSaved;
+    }
+    
+    // Якщо графіку немає, але є зміна статусу ГАВ/СГАВ — оновлюємо поточний
+    if (empty($schedulesByDate) && $emergencyModeTime > 0) {
         $currentData = getSchedules();
         if ($currentData && !empty($currentData['queues'])) {
-            // Оновлюємо тільки статус emergency_mode
             $saved = saveSchedules(
                 $currentData['queues'],
                 $currentData['date'],
-                $emergencyModeDetected, // новий статус
+                $emergencyModeDetected,
                 SOURCE_TELEGRAM,
                 ''
             );
-            
             if ($saved) {
                 return [
                     'date' => $currentData['date'],
@@ -164,7 +153,7 @@ function fetchFromTelegram($limit = 10) {
         }
     }
     
-    return false; // Графік не знайдено в жодному повідомленні
+    return false;
 }
 
 /**

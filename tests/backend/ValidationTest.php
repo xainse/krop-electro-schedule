@@ -51,6 +51,23 @@ class ValidationTest extends TestCase
         $this->assertFalse(extractDate($text));
     }
 
+    public function testExtractDateTomorrowBare(): void
+    {
+        $ref = strtotime('2026-01-15 20:00:00');
+        $this->assertSame('16.01.2026', extractDate('Графіки завтра', $ref));
+    }
+
+    public function testExtractDateTodayBare(): void
+    {
+        $ref = strtotime('2026-01-15 08:00:00');
+        $this->assertSame('15.01.2026', extractDate('Графіки сьогодні', $ref));
+    }
+
+    public function testExtractDateNoMatchReturnsFalse(): void
+    {
+        $this->assertFalse(extractDate('Якась інформація без дати'));
+    }
+
     // --- normalizeSchedule edge cases ---
 
     public function testNormalizeScheduleRemovesNewlines(): void

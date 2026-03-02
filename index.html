@@ -51,6 +51,7 @@
         </select>
         <button id="refreshBtn" title="Оновити зараз">🔄 Оновити</button>
         <span class="meta" id="updatedMeta">Останнє оновлення: —</span>
+        <span class="meta" id="scheduleDateMeta" style="margin-left:12px;font-weight:600;"></span>
       </div>
       <div id="apiErrorMsg" class="update-warning" style="display:none;"></div>
       <div id="emergencyMsg" class="emergency-warning" style="display:none;"></div>
@@ -93,7 +94,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '2.9';
+    const VERSION = '3.0';
     
     // Базовий URL API: з query ?api_base=..., на GitHub Pages — дефолт xain.in.ua, інакше відносний шлях
     let apiBase = '';
@@ -149,6 +150,7 @@
     let API_URL = apiUrl('api/blackout.php') + '?queue=' + currentQueue;
     const gridEl = document.getElementById('grid');
     const updatedMeta = document.getElementById('updatedMeta');
+    const scheduleDateMeta = document.getElementById('scheduleDateMeta');
     const errorMsg = document.getElementById('errorMsg');
     const statusMsg = document.getElementById('statusMsg');
     const refreshBtn = document.getElementById('refreshBtn');
@@ -788,8 +790,12 @@
         render(periods);
         const ts = new Date();
         updatedMeta.textContent = 'Останнє оновлення: ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        // Повертаємо нормальний колір для updatedMeta при успішному оновленні
         updatedMeta.style.color = '';
+        if (data && data.date) {
+          scheduleDateMeta.textContent = 'Графік на ' + data.date;
+        } else {
+          scheduleDateMeta.textContent = '';
+        }
         statusMsg.textContent = 'Готово';
         
         // Зберігаємо успішно завантажені дані

@@ -94,12 +94,36 @@ function detectEmergencyMode($text) {
 /**
  * Витягує дату з тексту
  * @param string $text Текст повідомлення
+ * @param int|null $referenceTime Unix timestamp для обчислення "сьогодні"/"завтра" (null = time())
  * @return string|false Дата в форматі DD.MM.YYYY або false
  */
-function extractDate($text) {
-    // Шукаємо дату в форматі DD.MM.YYYY
-    if (preg_match('/(\d{2})\.(\d{2})\.(\d{4})/', $text, $matches)) {
-        return $matches[0]; // Повертаємо повну дату
+function extractDate($text, $referenceTime = null) {
+    if ($referenceTime === null) {
+        $referenceTime = time();
+    }
+
+    // 1. Шукаємо дату після контекстних слів ("на DD.MM.YYYY", "графік на DD.MM.YYYY")
+    if (preg_match('/(?:на|від|з)\s+(\d{1,2})\.(\d{1,2})\.(\d{4})/ui', $text, $matches)) {
+        $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
+        $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+        return $day . '.' . $month . '.' . $matches[3];
+    }
+
+    // 2. Шукаємо "завтра"/"на завтра" — обчислюємо дату
+    if (preg_match('/(?:на\s+)?завтра/ui', $text)) {
+        return date('d.m.Y', strtotime('+1 day', $referenceTime));
+    }
+
+    // 3. Шукаємо "сьогодні"/"на сьогодні" — обчислюємо дату
+    if (preg_match('/(?:на\s+)?сьогодні/ui', $text)) {
+        return date('d.m.Y', $referenceTime);
+    }
+
+    // 4. Fallback: перша дата в форматі DD.MM.YYYY (або D.M.YYYY)
+    if (preg_match('/(\d{1,2})\.(\d{1,2})\.(\d{4})/', $text, $matches)) {
+        $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
+        $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+        return $day . '.' . $month . '.' . $matches[3];
     }
     
     return false;

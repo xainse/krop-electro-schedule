@@ -643,6 +643,7 @@ if ($requestAll) {
         'queues' => isset($cacheData['queues']) ? $cacheData['queues'] : [],
         'emergency_mode' => $emergencyMode,
         'updated' => isset($cacheData['timestamp']) ? $cacheData['timestamp'] : null,
+        'date' => $cacheData['date'] ?? null,
         'source' => $sourceUrl
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
@@ -684,6 +685,7 @@ echo json_encode([
     'schedule' => $schedule,
     'emergency_mode' => $emergencyMode,
     'updated' => isset($cacheData['timestamp']) ? $cacheData['timestamp'] : null,
+    'date' => $cacheData['date'] ?? null,
     'source' => $sourceUrl
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 ?>
