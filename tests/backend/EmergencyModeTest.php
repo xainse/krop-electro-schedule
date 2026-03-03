@@ -149,4 +149,11 @@ class EmergencyModeTest extends TestCase
         $html = '<div>графік аварійних відключень активний</div>';
         $this->assertTrue(checkEmergencyModeInHTML($html));
     }
+
+    /** ГПВ = графік погодинних відключень; не має сприйматися як ГАВ */
+    public function testCheckEmergencyModeGPVNotGAV(): void
+    {
+        $html = '<div>графік погодинних відключень (ГПВ) на 03.03.2026</div>';
+        $this->assertFalse(checkEmergencyModeInHTML($html));
+    }
 }
