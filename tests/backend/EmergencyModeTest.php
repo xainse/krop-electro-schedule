@@ -76,80 +76,77 @@ class EmergencyModeTest extends TestCase
     }
 
     // ==========================================
-    // checkEmergencyMode() from blackout.php
+    // checkEmergencyModeInHTML() from site_fetcher.php
     // ==========================================
 
     public function testCheckEmergencyModeDetectsGAV(): void
     {
         $html = '<div>Увага! Введено в дію графік аварійних відключень</div>';
-        $this->assertTrue(checkEmergencyMode($html));
+        $this->assertTrue(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeDetectsGAVKeyword(): void
     {
         $html = '<div>Увага! Діє ГАВ на сьогодні</div>';
-        $this->assertTrue(checkEmergencyMode($html));
+        $this->assertTrue(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeDetectsSGAV(): void
     {
         $html = '<div>Спеціальний графік аварійних відключень активний</div>';
-        $this->assertTrue(checkEmergencyMode($html));
+        $this->assertTrue(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeDetectsSGAVKeyword(): void
     {
         $html = '<div>Увага! СГАВ введено</div>';
-        $this->assertTrue(checkEmergencyMode($html));
+        $this->assertTrue(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeDetectsEmergencyPattern(): void
     {
         $html = '<p>Діє графік аварійних відключень для Кропивницького</p>';
-        $this->assertTrue(checkEmergencyMode($html));
+        $this->assertTrue(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeCancellationReturnsFalse(): void
     {
-        // checkEmergencyMode uses /i (not /ui), so case must match for Cyrillic
         $html = '<div>дію графіка аварійних відключень (ГАВ) скасовано</div>';
-        $this->assertFalse(checkEmergencyMode($html));
+        $this->assertFalse(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeCancellationSGAVReturnsFalse(): void
     {
         $html = '<div>СГАВ скасовано з 15:00</div>';
-        $this->assertFalse(checkEmergencyMode($html));
+        $this->assertFalse(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeNormalHTMLReturnsFalse(): void
     {
         $html = '<div>Графіки планових відключень на 23.01.2026</div>';
-        $this->assertFalse(checkEmergencyMode($html));
+        $this->assertFalse(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeEmptyHTMLReturnsFalse(): void
     {
-        $this->assertFalse(checkEmergencyMode(''));
+        $this->assertFalse(checkEmergencyModeInHTML(''));
     }
 
     public function testCheckEmergencyModeProximityPattern(): void
     {
-        // "графік" and "аварій" within 50 characters
         $html = '<div>Діє новий графік щодо аварійного стану</div>';
-        $this->assertTrue(checkEmergencyMode($html));
+        $this->assertTrue(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeCancellationBeatsActivation(): void
     {
         $html = '<div>ГАВ скасовано. Раніше діяв графік аварійних відключень.</div>';
-        $this->assertFalse(checkEmergencyMode($html));
+        $this->assertFalse(checkEmergencyModeInHTML($html));
     }
 
     public function testCheckEmergencyModeLowercaseMatch(): void
     {
-        // checkEmergencyMode uses /i (ASCII only), so Cyrillic must match case exactly
         $html = '<div>графік аварійних відключень активний</div>';
-        $this->assertTrue(checkEmergencyMode($html));
+        $this->assertTrue(checkEmergencyModeInHTML($html));
     }
 }

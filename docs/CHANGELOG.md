@@ -5,6 +5,24 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [3.1] - 2026-03-02
+
+### Змінено
+- **Рефакторинг blackout.php**: замінено inline парсинг сайту на виклик `site_fetcher.fetchFromSite()` — прибрано дублювання ~230 рядків коду.
+- blackout.php тепер використовує `site_fetcher.php` для fallback на kiroe.com.ua (замість власного fetchUrl, parseAllQueues, checkEmergencyMode).
+- Додано поле `date` (DD.MM.YYYY) до кешу blackout_cache.json та API-відповіді — зберігається з Telegram та site_fetcher.
+- Оновлено backend-тести: ParseAllQueuesTest використовує `extractQueues()` з parser.php; EmergencyModeTest — `checkEmergencyModeInHTML()` з site_fetcher.php.
+- Розширено `checkEmergencyModeInHTML()` у site_fetcher: додано патерн близькості «графік»+«аварій».
+
+### Видалено
+- `api/blackout_new.php` — не використовувався, видалено після рефакторингу blackout.php.
+- `tests/backend/blackout_functions.php` — більше не потрібен після видалення функцій з blackout.php.
+
+### Збережено
+- Graceful degradation: при недоступності Telegram і сайту повертається застарілий кеш.
+- Rate limiting (5 хв) та TTL 10 хвилин.
+- Параметри `force_refresh=1`, `test_emergency=1`.
+
 ## [3.0] - 2026-03-02
 
 ### Додано

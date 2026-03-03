@@ -134,6 +134,11 @@ function checkEmergencyModeInHTML($html) {
         }
     }
     
+    // Комбінація "графік" + "аварій" в межах 50 символів
+    if (preg_match('/графік.{0,50}аварій|аварій.{0,50}графік/ui', $html)) {
+        return true;
+    }
+    
     return false;
 }
 ?>

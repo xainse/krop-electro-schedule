@@ -59,8 +59,9 @@ if (!$requestAll) {
 $sourceUrl = 'https://kiroe.com.ua/electricity-blackout';
 const CACHE_TTL = 600; // 10 хвилин в секундах
 
-// Завантажуємо fetcher
+// Завантажуємо fetcher'и
 require_once __DIR__ . '/telegram_fetcher.php';
+require_once __DIR__ . '/site_fetcher.php';
 
 /**
  * Перевіряє чи минуло достатньо часу для перевірки джерел даних (Telegram)
@@ -257,162 +258,6 @@ function saveCache($cacheFile, $data) {
 }
 
 
-/**
- * Парсить всі черги з HTML тексту
- * @param string $text Текст з графіками черг
- * @return array Асоціативний масив ['1.1' => 'schedule', '1.2' => 'schedule', ...]
- */
-function parseAllQueues($text) {
-    $queues = [];
-    
-    // Шукаємо всі рядки формату "Черга X.X: діапазони"
-    // Використовуємо regex для знаходження всіх черг
-    $pattern = '/Черга\s+(\d+\.\d+)\s*:\s*(.+?)(?=\n\s*Черга\s+\d+\.\d+|$)/is';
-    
-    if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
-        foreach ($matches as $match) {
-            $queueNum = $match[1];
-            $schedule = normalizeSchedule($match[2]);
-            $queues[$queueNum] = $schedule;
-        }
-    }
-    
-    return $queues;
-}
-
-/**
- * Перевіряє чи є повідомлення про графік аварійних відключень (ГАВ) в HTML
- * @param string $html HTML код сторінки
- * @return bool true якщо ГАВ активний, false інакше
- */
-function checkEmergencyMode($html) {
-    // Спочатку перевіряємо чи ГАВ/СГАВ скасовано
-    // Якщо знайдено текст про скасування - повертаємо false одразу
-    $cancellationPatterns = [
-        '/дію\s+графіка\s+аварійних\s+відключень\s*\(?\s*ГАВ\s*\)?\s+скасовано/i',
-        '/скасовано\s+дію\s+графіка\s+аварійних\s+відключень/i',
-        '/ГАВ\s+скасовано/i',
-        '/скасовано\s+ГАВ/i',
-        '/графік\s+аварійних\s+відключень\s*\(?\s*ГАВ\s*\)?\s+скасовано/i',
-        '/дію\s+спеціального\s+графіка\s+аварійних\s+відключень\s*\(?\s*СГАВ\s*\)?\s+скасовано/i',
-        '/скасовано\s+дію\s+спеціального\s+графіка\s+аварійних\s+відключень/i',
-        '/СГАВ\s+скасовано/i',
-        '/скасовано\s+СГАВ/i',
-        '/спеціальний\s+графік\s+аварійних\s+відключень\s*\(?\s*СГАВ\s*\)?\s+скасовано/i'
-    ];
-    
-    foreach ($cancellationPatterns as $pattern) {
-        if (preg_match($pattern, $html)) {
-            return false; // ГАВ скасовано
-        }
-    }
-    
-    // Шукаємо текст про "графік аварійних відключень", "ГАВ" або "СГАВ"
-    // Перевіряємо різні варіанти написання та комбінації
-    $patterns = [
-        // Точні збіги про ГАВ
-        '/графік\s+аварійних\s+відключень/i',
-        '/графік\s*аварійних\s*відключень/i',
-        '/ГАВ/i',
-        // СГАВ (спеціальний графік аварійних відключень)
-        '/спеціальний\s+графік\s+аварійних\s+відключень/i',
-        '/спеціальний\s*графік\s*аварійних\s*відключень/i',
-        '/СГАВ/i',
-        // Комбінації з "введено в дію"
-        '/введено\s+в\s+дію\s+графік\s+аварійних/i',
-        '/введено\s+в\s+дію\s+графік\s*аварійних/i',
-        '/введено\s+в\s+дію\s+спеціальний\s+графік\s+аварійних/i',
-        // Інші варіанти
-        '/аварійних\s+відключень/i',
-        '/аварійного\s+відключення/i',
-        // Шукаємо також в тексті повідомлень про важливу інформацію
-        '/Увага.*аварійних/i',
-        '/Увага.*ГАВ/i',
-        '/Увага.*СГАВ/i'
-    ];
-    
-    foreach ($patterns as $pattern) {
-        if (preg_match($pattern, $html)) {
-            return true;
-        }
-    }
-    
-    // Додаткова перевірка: шукаємо комбінацію "графік" + "аварій" в межах 50 символів
-    if (preg_match('/графік.{0,50}аварій|аварій.{0,50}графік/i', $html)) {
-        return true;
-    }
-    
-    return false;
-}
-
-
-// Завантажуємо HTML сторінку через curl (більш надійно для зовнішніх URL)
-// Сумісно з PHP 7.4
-function fetchUrl($url) {
-    // Спочатку пробуємо через curl
-    if (function_exists('curl_init')) {
-        $ch = curl_init();
-        if ($ch === false) {
-            // curl_init не вдався
-        } else {
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language: uk-UA,uk;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Accept-Encoding: gzip, deflate, br',
-                'Connection: keep-alive',
-                'Upgrade-Insecure-Requests: 1'
-            ]);
-            curl_setopt($ch, CURLOPT_ENCODING, ''); // Автоматична декомпресія
-            
-            $html = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlError = curl_error($ch);
-            // curl_close не потрібен в PHP 8.0+
-            
-            if ($html !== false && $httpCode == 200 && strlen($html) > 0) {
-                return $html;
-            }
-        }
-    }
-    
-    // Якщо curl не доступний або не спрацював, пробуємо file_get_contents
-    // Перевіряємо чи дозволено allow_url_fopen
-    if (ini_get('allow_url_fopen')) {
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'header' => [
-                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language: uk-UA,uk;q=0.9'
-                ],
-                'timeout' => 15,
-                'follow_location' => 1,
-                'ignore_errors' => true
-            ],
-            'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false
-            ]
-        ]);
-        
-        $html = @file_get_contents($url, false, $context);
-        if ($html !== false && strlen($html) > 0) {
-            return $html;
-        }
-    }
-    
-    return false;
-}
-
 // Отримуємо шлях до файлу кешу
 $cacheFile = getCachePath();
 
@@ -469,6 +314,7 @@ if ($needUpdate) {
             // Оновлюємо кеш даними з Telegram
             $cacheData = [
                 'timestamp' => time(),
+                'date' => $telegramData['date'] ?? null,
                 'queues' => $telegramData['queues'],
                 'emergency_mode' => $telegramData['emergency_mode']
             ];
@@ -483,22 +329,18 @@ if ($needUpdate) {
         }
     }
     
-    // 2. Якщо Telegram не спрацював - fallback на парсинг сайту
+    // 2. Якщо Telegram не спрацював - fallback на site_fetcher
     if (!$fetchSuccess) {
         $dataSource = 'site';
-        $html = fetchUrl($sourceUrl);
+        $siteData = fetchFromSite();
         
-        // Перевірка чи вдалося завантажити сторінку
-        if ($html === false) {
-            $fetchFailed = true;
-            // Якщо є кеш - використаємо його
-            if ($cacheData !== null && isset($cacheData['queues'])) {
+        if ($siteData === false || empty($siteData['queues'])) {
+            // Сайт не повернув дані
+            if ($cacheData !== null && isset($cacheData['queues']) && !empty($cacheData['queues'])) {
                 $dataSource = 'cache';
-                // Продовжуємо виконання з даними з кешу
+                // Graceful degradation: використовуємо застарілий кеш
             } else {
-                // Кешу немає і дані не отримано - повертаємо помилку
                 $responseTime = (microtime(true) - $startTime) * 1000;
-                
                 logRequest([
                     'queue' => $queue,
                     'source' => $dataSource,
@@ -507,7 +349,6 @@ if ($needUpdate) {
                     'ip' => getClientIp(),
                     'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
                 ]);
-                
                 http_response_code(404);
                 echo json_encode([
                     'success' => false,
@@ -518,98 +359,21 @@ if ($needUpdate) {
                 exit;
             }
         } else {
-            // HTML отримано, продовжуємо парсинг
-            libxml_use_internal_errors(true);
-            $dom = new DOMDocument();
-            @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-            libxml_clear_errors();
-            
-            $xpath = new DOMXPath($dom);
-            $infoPopup = $xpath->query("//*[@id='info_popup']")->item(0);
-            
-            if (!$infoPopup) {
-                $fetchFailed = true;
-                if ($cacheData !== null && isset($cacheData['queues'])) {
-                    $dataSource = 'cache';
-                } else {
-                    $responseTime = (microtime(true) - $startTime) * 1000;
-                    
-                    logRequest([
-                        'queue' => $queue,
-                        'source' => $dataSource,
-                        'response_time_ms' => round($responseTime, 2),
-                        'success' => false,
-                        'ip' => getClientIp(),
-                        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
-                    ]);
-                    
-                    http_response_code(404);
-                    echo json_encode([
-                        'success' => false,
-                        'error' => 'Info popup element not found',
-                        'queue' => $queue,
-                        'source' => $sourceUrl
-                    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-                    exit;
-                }
-            } else {
-                $bodyDesc = $xpath->query(".//*[contains(@class, 'fancybox_body_desc')]", $infoPopup)->item(0);
-                
-                if (!$bodyDesc) {
-                    $fetchFailed = true;
-                    if ($cacheData !== null && isset($cacheData['queues'])) {
-                        $dataSource = 'cache';
-                    } else {
-                        $responseTime = (microtime(true) - $startTime) * 1000;
-                        
-                        logRequest([
-                            'queue' => $queue,
-                            'source' => $dataSource,
-                            'response_time_ms' => round($responseTime, 2),
-                            'success' => false,
-                            'ip' => getClientIp(),
-                            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
-                        ]);
-                        
-                        http_response_code(404);
-                        echo json_encode([
-                            'success' => false,
-                            'error' => 'Schedule content not found',
-                            'queue' => $queue,
-                            'source' => $sourceUrl
-                        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-                        exit;
-                    }
-                } else {
-                    // Парсимо дані з сайту
-                    $text = $bodyDesc->textContent;
-                    $emergencyMode = checkEmergencyMode($html);
-                    $allQueues = parseAllQueues($text);
-                    
-                    if ($emergencyMode && (empty($allQueues) || count($allQueues) < count($cacheData['queues'] ?? []))) {
-                        if ($cacheData !== null && isset($cacheData['queues']) && !empty($cacheData['queues'])) {
-                            $allQueues = $cacheData['queues'];
-                        }
-                    }
-                    
-                    // ВИПРАВЛЕННЯ: Не оновлювати кеш якщо нові дані порожні
-                    if (!empty($allQueues)) {
-                        $cacheData = [
-                            'timestamp' => time(),
-                            'queues' => $allQueues,
-                            'emergency_mode' => $emergencyMode
-                        ];
-                        
-                        saveCache($cacheFile, $cacheData);
-                        $newDataObtained = true;
-                    } else {
-                        // Якщо нові дані порожні - використовуємо існуючий кеш
-                        // Залишаємо $cacheData як є (вже завантажений на початку)
-                        $dataSource = 'cache';
-                        error_log("Site parser повернув порожні дані, використовуємо кеш");
-                    }
+            // ГАВ + порожні/неповні дані з сайту — використовуємо кеш як fallback
+            $allQueues = $siteData['queues'];
+            if ($siteData['emergency_mode'] && (count($allQueues) < count($cacheData['queues'] ?? []))) {
+                if ($cacheData !== null && isset($cacheData['queues']) && !empty($cacheData['queues'])) {
+                    $allQueues = $cacheData['queues'];
                 }
             }
+            $cacheData = [
+                'timestamp' => time(),
+                'date' => $siteData['date'] ?? date('d.m.Y'),
+                'queues' => $allQueues,
+                'emergency_mode' => (bool)($siteData['emergency_mode'] ?? false)
+            ];
+            saveCache($cacheFile, $cacheData);
+            $newDataObtained = true;
         }
     }
 }

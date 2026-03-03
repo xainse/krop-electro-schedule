@@ -414,7 +414,7 @@
 - **Деталі:**
   - Файл: `cache/blackout_cache.json`
   - TTL: 10 хвилин
-  - Структура: timestamp, queues, emergency_mode
+  - Структура: timestamp, date, queues, emergency_mode
   - Парсинг всіх 12 черг одночасно
   - Кеш не видаляється при expired (fallback)
 - **Пріоритет:** HIGH
@@ -444,14 +444,13 @@
 - **Статус:** ✅ Реалізовано (версія 2.1)
 
 #### FR-18: Site Parser (Fallback)
-- **Опис:** Парсинг офіційного сайту kiroe.com.ua
+- **Опис:** Парсинг офіційного сайту kiroe.com.ua через `site_fetcher.php`
 - **Деталі:**
   - URL: https://kiroe.com.ua/electricity-blackout
-  - Пошук елемента `#info_popup`
-  - Витягування тексту з `.fancybox_body_desc`
-  - Парсинг всіх 12 черг одночасно
-  - Виявлення ГАВ/СГАВ
+  - Функція `fetchFromSite()` — завантаження HTML, парсинг через `parseHTMLSchedule` (parser.php)
+  - Виявлення ГАВ/СГАВ через `checkEmergencyModeInHTML()`
   - cURL з fallback на file_get_contents
+  - blackout.php викликає site_fetcher при fallback з Telegram
 - **Пріоритет:** HIGH
 - **Статус:** ✅ Реалізовано
 
@@ -611,6 +610,7 @@ project/
 ├── api/
 │   ├── blackout.php        # Головний API endpoint
 │   ├── telegram_fetcher.php # Telegram scraper
+│   ├── site_fetcher.php    # Fallback парсер kiroe.com.ua
 │   ├── parser.php          # Парсер повідомлень
 │   ├── data.php            # Робота з JSON файлами
 │   ├── config.php          # Конфігурація (не в git)
@@ -647,6 +647,7 @@ project/
 ```json
 {
   "timestamp": 1706016000,
+  "date": "02.03.2026",
   "queues": {
     "1.1": "02:00-04:00, 06:00-08:00, 10:00-11:30",
     "1.2": "04:00-06:00, 08:00-10:00, 12:00-14:00",

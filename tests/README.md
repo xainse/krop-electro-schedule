@@ -20,11 +20,10 @@ tests/
 │   ├── composer.json
 │   ├── phpunit.xml
 │   ├── bootstrap.php
-│   ├── blackout_functions.php          # Витягує функції з blackout.php
 │   ├── ParserTest.php                  # parseScheduleMessage, extractQueues, normalizeSchedule
 │   ├── ValidationTest.php              # validateSchedule, extractDate
-│   ├── ParseAllQueuesTest.php          # parseAllQueues
-│   └── EmergencyModeTest.php           # detectEmergencyMode, checkEmergencyMode
+│   ├── ParseAllQueuesTest.php          # extractQueues (parser)
+│   └── EmergencyModeTest.php           # detectEmergencyMode (parser), checkEmergencyModeInHTML (site_fetcher)
 └── README.md
 ```
 
@@ -48,7 +47,7 @@ vendor/bin/phpunit # Запустити всі тести
 
 ## Покриття
 
-### Frontend (62 тести)
+### Frontend (66 тестів)
 
 | Функція | Тестів | Що перевіряється |
 |---------|--------|------------------|
@@ -61,7 +60,7 @@ vendor/bin/phpunit # Запустити всі тести
 | `initialGrid` | 6 | Створення DOM елементів |
 | `render` | 8 | Рендеринг станів, статистика, CSS класи |
 
-### Backend (61 тест)
+### Backend (70 тестів)
 
 | Клас тесту | Тестів | Що перевіряється |
 |------------|--------|------------------|

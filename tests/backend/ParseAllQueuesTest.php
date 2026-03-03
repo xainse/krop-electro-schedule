@@ -22,13 +22,13 @@ class ParseAllQueuesTest extends TestCase
 
     public function testParseAllQueuesFinds12Queues(): void
     {
-        $queues = parseAllQueues($this->fullScheduleText());
+        $queues = extractQueues($this->fullScheduleText());
         $this->assertCount(12, $queues);
     }
 
     public function testParseAllQueuesContainsExpectedKeys(): void
     {
-        $queues = parseAllQueues($this->fullScheduleText());
+        $queues = extractQueues($this->fullScheduleText());
         $expectedKeys = ['1.1', '1.2', '2.1', '2.2', '3.1', '3.2', '4.1', '4.2', '5.1', '5.2', '6.1', '6.2'];
         foreach ($expectedKeys as $key) {
             $this->assertArrayHasKey($key, $queues, "Missing queue $key");
@@ -37,7 +37,7 @@ class ParseAllQueuesTest extends TestCase
 
     public function testParseAllQueuesNormalizesSchedules(): void
     {
-        $queues = parseAllQueues($this->fullScheduleText());
+        $queues = extractQueues($this->fullScheduleText());
         // "02-04" should be normalized to "02:00-04:00"
         $this->assertStringContainsString('02:00-04:00', $queues['1.1']);
         $this->assertStringContainsString('06:00-08:00', $queues['1.1']);
@@ -47,21 +47,21 @@ class ParseAllQueuesTest extends TestCase
     {
         $text = "Черга 1.1: 02:00-04:00, 06:00-08:00\n" .
             "Черга 1.2: 04:00-06:00, 08:00-10:30\n";
-        $queues = parseAllQueues($text);
+        $queues = extractQueues($text);
         $this->assertCount(2, $queues);
         $this->assertStringContainsString('10:30', $queues['1.2']);
     }
 
     public function testParseAllQueuesReturnsEmptyForNoQueues(): void
     {
-        $queues = parseAllQueues('Немає графіків сьогодні');
+        $queues = extractQueues('Немає графіків сьогодні');
         $this->assertEmpty($queues);
     }
 
     public function testParseAllQueuesSingleQueue(): void
     {
         $text = "Черга 3.1: 04:00-06:00, 16:00-18:00";
-        $queues = parseAllQueues($text);
+        $queues = extractQueues($text);
         $this->assertCount(1, $queues);
         $this->assertArrayHasKey('3.1', $queues);
     }
@@ -69,7 +69,7 @@ class ParseAllQueuesTest extends TestCase
     public function testParseAllQueuesHandlesExtraWhitespace(): void
     {
         $text = "Черга 1.1:   02-04 ,  06-08  \n\n  Черга 1.2:  04-06 , 08-10  \n";
-        $queues = parseAllQueues($text);
+        $queues = extractQueues($text);
         $this->assertCount(2, $queues);
         $this->assertStringContainsString('02:00-04:00', $queues['1.1']);
     }
@@ -93,7 +93,7 @@ class ParseAllQueuesTest extends TestCase
 Черга 6.2: 18:00-20:00, 06:00-08:00
 TEXT;
 
-        $queues = parseAllQueues($text);
+        $queues = extractQueues($text);
         $this->assertCount(12, $queues);
         $this->assertStringContainsString('10:00-11:30', $queues['1.1']);
     }
