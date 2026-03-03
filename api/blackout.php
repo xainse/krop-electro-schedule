@@ -324,8 +324,22 @@ if ($needUpdate) {
             // Зберігаємо timestamp перевірки
             saveSourceCheckTimestamp();
         } else {
-            // Telegram не повернув дані або помилка
-            error_log("Telegram не повернув дані, використовуємо fallback на сайт");
+            // Telegram не повернув нових повідомлень (наприклад last_id вже 1553).
+            // Синхронізуємо кеш з schedules.json — там вже може бути актуальна дата з попередніх викликів.
+            $fromSchedules = getSchedules();
+            if ($fromSchedules && !empty($fromSchedules['queues'])) {
+                $cacheData = [
+                    'timestamp' => time(),
+                    'date' => $fromSchedules['date'] ?? null,
+                    'queues' => $fromSchedules['queues'],
+                    'emergency_mode' => (bool)($fromSchedules['emergency_mode'] ?? false)
+                ];
+                saveCache($cacheFile, $cacheData);
+                $fetchSuccess = true;
+                $dataSource = 'telegram';
+            } else {
+                error_log("Telegram не повернув дані, використовуємо fallback на сайт");
+            }
         }
     }
     

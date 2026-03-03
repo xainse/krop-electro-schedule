@@ -36,17 +36,26 @@ function fetchFromTelegram($limit = 10) {
         return false;
     }
     
-    // Парсимо HTML та отримуємо повідомлення
+    // Парсимо HTML та отримуємо повідомлення (лише нові, якщо lastKnownId задано)
     $messages = parseTelegramHTML($html, $lastKnownId);
+    
+    // Якщо нових немає — один раз перепарсити останні повідомлення (актуалізувати schedules.json після деплою)
+    if (($messages === false || empty($messages)) && $lastKnownId !== null) {
+        $messages = parseTelegramHTML($html, null);
+        if ($messages !== false && !empty($messages)) {
+            $messages = array_slice($messages, 0, max($limit, 20));
+        }
+    }
     
     if ($messages === false || empty($messages)) {
         error_log("Telegram fetcher: Не вдалося розпарсити HTML або немає нових повідомлень");
         return false;
     }
     
-    // При першому запуску обмежуємо кількість
-    if ($lastKnownId === null) {
-        $messages = array_slice($messages, 0, $limit);
+    // Обмежуємо кількість: при першому запуску — limit, після retry (багато повідомлень) — до 20
+    $maxMessages = (count($messages) > $limit && $lastKnownId !== null) ? 20 : $limit;
+    if (count($messages) > $maxMessages) {
+        $messages = array_slice($messages, 0, $maxMessages);
     }
     
     $count = count($messages);
@@ -128,6 +137,35 @@ function fetchFromTelegram($limit = 10) {
         }
     }
     
+    // Повертаємо графік для актуальної дати (найближча дата >= сьогодні), а не останній з циклу.
+    // Інакше при наявності 02.03 і 03.03 API міг віддавати 02.03 і показувати застарілі відключення.
+    $todayKey = date('Y-m-d');
+    $sortedKeys = [];
+    foreach (array_keys($schedulesByDate) as $dateDMY) {
+        $k = dateToKey($dateDMY);
+        if ($k !== false) {
+            $sortedKeys[] = $k;
+        }
+    }
+    sort($sortedKeys);
+    foreach ($sortedKeys as $key) {
+        if ($key >= $todayKey) {
+            $dateDMY = keyToDate($key);
+            if ($dateDMY !== false && isset($schedulesByDate[$dateDMY])) {
+                $parsed = $schedulesByDate[$dateDMY];
+                $em = $parsed['emergency_mode'];
+                if ($emergencyModeTime > 0) {
+                    $em = $emergencyModeDetected;
+                }
+                return [
+                    'date' => $parsed['date'],
+                    'emergency_mode' => $em,
+                    'queues' => $parsed['queues']
+                ];
+            }
+        }
+    }
+    // Немає дати >= сьогодні — повертаємо останнє збережене (найпізніший графік з кешу)
     if ($lastSaved) {
         return $lastSaved;
     }
