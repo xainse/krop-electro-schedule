@@ -11,6 +11,7 @@
 // Завантажуємо модулі
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/parser.php';
+require_once __DIR__ . '/data.php';
 
 /**
  * Завантажує та парсить дані з сайту kiroe.com.ua
@@ -23,16 +24,19 @@ function fetchFromSite() {
         return false;
     }
     
-    // Парсимо HTML
-    $parsed = parseHTMLSchedule($html);
+    $extractedText = null;
+    $parsed = parseHTMLSchedule($html, $extractedText);
+    
+    if (function_exists('logSourceContent') && $extractedText !== null && $extractedText !== '') {
+        logSourceContent('site', $extractedText, ['url' => SITE_URL]);
+    }
     
     if (!$parsed) {
         return false;
     }
     
-    // Додаємо перевірку ГАВ з HTML
-    $parsed['emergency_mode'] = checkEmergencyModeInHTML($html);
-    
+    // ГАВ визначаємо тією ж логікою, що й для Telegram (parser.php)
+    $parsed['emergency_mode'] = (detectEmergencyMode($html) === true);
     return $parsed;
 }
 
@@ -93,51 +97,11 @@ function fetchUrl($url) {
 }
 
 /**
- * Перевіряє чи є повідомлення про ГАВ в HTML
+ * Перевіряє чи є повідомлення про ГАВ в HTML (обгортка над detectEmergencyMode з parser.php)
  * @param string $html HTML код сторінки
  * @return bool
  */
 function checkEmergencyModeInHTML($html) {
-    // Спочатку перевіряємо чи ГАВ/СГАВ скасовано
-    $cancellationPatterns = [
-        '/дію\s+графіка\s+аварійних\s+відключень\s*\(?\s*ГАВ\s*\)?\s+скасовано/ui',
-        '/скасовано\s+дію\s+графіка\s+аварійних\s+відключень/ui',
-        '/ГАВ\s+скасовано/ui',
-        '/скасовано\s+ГАВ/ui',
-        '/дію\s+спеціального\s+графіка\s+аварійних\s+відключень\s*\(?\s*СГАВ\s*\)?\s+скасовано/ui',
-        '/скасовано\s+дію\s+спеціального\s+графіка\s+аварійних\s+відключень/ui',
-        '/СГАВ\s+скасовано/ui',
-        '/скасовано\s+СГАВ/ui'
-    ];
-    
-    foreach ($cancellationPatterns as $pattern) {
-        if (preg_match($pattern, $html)) {
-            return false;
-        }
-    }
-    
-    // Шукаємо активний ГАВ або СГАВ (НЕ ГПВ — графік погодинних відключень)
-    // Патерн \b не підходить для кирилиці, тому виключаємо ГПВ: шукаємо ГАВ як окреме слово (не частину ГПВ)
-    $activationPatterns = [
-        '/графік\s+аварійних\s+відключень/ui',
-        '/(?<!ГП)ГАВ(?!\p{L})/u',  // ГАВ як окреме слово (не ГПВ і не частина іншого слова)
-        '/введено\s+в\s+дію\s+графік\s+аварійних/ui',
-        '/спеціальний\s+графік\s+аварійних\s+відключень/ui',
-        '/СГАВ/u',
-        '/введено\s+в\s+дію\s+спеціальний\s+графік\s+аварійних/ui'
-    ];
-    
-    foreach ($activationPatterns as $pattern) {
-        if (preg_match($pattern, $html)) {
-            return true;
-        }
-    }
-    
-    // Комбінація "графік" + "аварій" в межах 50 символів
-    if (preg_match('/графік.{0,50}аварій|аварій.{0,50}графік/ui', $html)) {
-        return true;
-    }
-    
-    return false;
+    return (detectEmergencyMode($html) === true);
 }
 ?>

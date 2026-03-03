@@ -86,6 +86,14 @@ function fetchFromTelegram($limit = 10) {
         
         $parsed = parseScheduleMessage($messageData['text']);
         
+        if (function_exists('logSourceContent')) {
+            logSourceContent('telegram', $messageData['text'], [
+                'message_id' => $messageData['message_num'],
+                'datetime' => $messageData['datetime'],
+                'link' => $messageData['link'] ?? '',
+            ]);
+        }
+        
         saveTelegramMessage([
             'id' => $messageData['id'],
             'message_num' => $messageData['message_num'],

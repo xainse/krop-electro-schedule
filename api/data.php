@@ -246,6 +246,49 @@ function isDataFresh($ttl = DATA_TTL) {
 }
 
 /**
+ * Логує сирий контент з джерела (сайт або Telegram) для аналізу та покращення парсера
+ * Файл: logs/source_content_YYYY-MM-DD.log
+ * @param string $source 'site' | 'telegram'
+ * @param string $content Текст/HTML, який ми отримали та парсимо
+ * @param array $meta Додаткові поля (message_id, datetime, link для telegram; url для site)
+ * @return void
+ */
+function logSourceContent($source, $content, $meta = []) {
+    if (defined('ENABLE_LOGGING') && !ENABLE_LOGGING) {
+        return;
+    }
+    if (!defined('LOGS_DIR') || !is_dir(LOGS_DIR)) {
+        if (defined('LOGS_DIR') && LOGS_DIR) {
+            @mkdir(LOGS_DIR, 0755, true);
+        } else {
+            return;
+        }
+    }
+    $maxLen = 100000; // ~100KB на запис
+    $truncated = false;
+    if (strlen($content) > $maxLen) {
+        $content = substr($content, 0, $maxLen) . "\n… [обрізано, було " . strlen($content) . " байт]";
+        $truncated = true;
+    }
+    $timestamp = date('Y-m-d H:i:s') . '.' . str_pad((int)(microtime(true) * 1000) % 1000, 3, '0', STR_PAD_LEFT);
+    $logEntry = array_merge([
+        'timestamp' => $timestamp,
+        'source' => $source,
+        'content' => $content,
+        'length' => strlen($content),
+    ], $meta);
+    if ($truncated) {
+        $logEntry['truncated'] = true;
+    }
+    $logFile = LOGS_DIR . '/source_content_' . date('Y-m-d') . '.log';
+    $line = json_encode($logEntry, JSON_UNESCAPED_UNICODE) . "\n";
+    @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+    if (file_exists($logFile)) {
+        @chmod($logFile, 0644);
+    }
+}
+
+/**
  * Логує запит до API в файл api_YYYY-MM-DD.log
  * @param array $data Дані для логування
  * @return void

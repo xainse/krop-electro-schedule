@@ -74,20 +74,24 @@ function detectEmergencyMode($text) {
         }
     }
     
-    // Шукаємо текст про введення ГАВ або СГАВ
+    // Шукаємо текст про введення ГАВ або СГАВ (спільна логіка для Telegram і сайту)
     $activationPatterns = [
+        '/графік\s+аварійних\s+відключень/ui',
+        '/(?<!ГП)ГАВ(?!\p{L})/u',  // ГАВ як окреме слово, не ГПВ
         '/введено\s+в\s+дію\s+графік\s+аварійних/ui',
         '/введено\s+в\s+дію\s+спеціальний\s+графік\s+аварійних/ui',
         '/спеціальний\s+графік\s+аварійних\s+відключень/ui',
-        '/СГАВ/u'
+        '/введено\s+в\s+дію\s+спеціальний\s+графік\s+аварійних\s+відключень\s+(СГАВ)/ui'
     ];
-    
     foreach ($activationPatterns as $pattern) {
         if (preg_match($pattern, $text)) {
             return true;
         }
     }
-    
+    // «графік» + «аварій» поруч (до 50 символів)
+    if (preg_match('/графік.{0,50}аварій|аварій.{0,50}графік/ui', $text)) {
+        return true;
+    }
     return null; // Повідомлення не стосується зміни статусу ГАВ/СГАВ
 }
 
@@ -218,9 +222,10 @@ function validateSchedule($schedule) {
 /**
  * Парсить HTML з сайту kiroe.com.ua (для fallback)
  * @param string $html HTML код сторінки
+ * @param string|null $extractedText Якщо передано по посиланню — сюди записується витягнутий текст (для логування)
  * @return array|false Масив з даними або false
  */
-function parseHTMLSchedule($html) {
+function parseHTMLSchedule($html, &$extractedText = null) {
     if (empty($html)) {
         return false;
     }
@@ -248,6 +253,9 @@ function parseHTMLSchedule($html) {
     
     // Отримуємо текстовий вміст
     $text = $bodyDesc->textContent;
+    if ($extractedText !== null) {
+        $extractedText = $text;
+    }
     
     // Використовуємо основну функцію парсингу
     return parseScheduleMessage($text);
