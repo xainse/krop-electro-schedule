@@ -130,6 +130,16 @@ class ParserTest extends TestCase
         $this->assertSame('', $queues['1.1']);
     }
 
+    /** Остання черга без наступної "Черга X.X" — графік обрізається до валідних символів, без реклами */
+    public function testExtractQueuesTrimsTrailingNonScheduleText(): void
+    {
+        $text = "Черга 6.2: 14-16, 22-24ПрАТ \"Кіровоградобленерго\" та інший рекламний текст";
+        $queues = extractQueues($text);
+        $this->assertCount(1, $queues);
+        $this->assertArrayHasKey('6.2', $queues);
+        $this->assertSame('14:00-16:00, 22:00-24:00', $queues['6.2']);
+    }
+
     // --- normalizeSchedule ---
 
     public function testNormalizeScheduleAddsMinutes(): void

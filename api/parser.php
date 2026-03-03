@@ -149,7 +149,11 @@ function extractQueues($text) {
         foreach ($matches as $match) {
             $queueNum = $match[1];
             $scheduleRaw = $match[2];
-            
+            // Залишаємо лише символи, допустимі в графіку (цифри, пробіли, коми, дефіси, двокрапки),
+            // щоб не захоплювати рекламний текст після останньої черги (наприклад «22-24ПрАТ…»)
+            if (preg_match('/^[0-9\s,\-:]+/u', $scheduleRaw, $validMatch)) {
+                $scheduleRaw = trim($validMatch[0]);
+            }
             // Нормалізуємо графік
             $schedule = normalizeSchedule($scheduleRaw);
             $scheduleTrimmed = trim($schedule);

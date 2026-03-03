@@ -20,6 +20,24 @@ require_once __DIR__ . '/data.php';
 require_once __DIR__ . '/parser.php';
 
 /**
+ * Для кожної дати залишає лише запис з найбільшим message_num (найновіше повідомлення).
+ * @param array $entries Масив ['parsed' => array, 'message_num' => int]
+ * @return array date => ['parsed' => ..., 'message_num' => ...]
+ */
+function mergeSchedulesByMessageNum(array $entries) {
+    $schedulesByDate = [];
+    foreach ($entries as $entry) {
+        $parsed = $entry['parsed'];
+        $dateKey = $parsed['date'];
+        $msgNum = $entry['message_num'];
+        if (!isset($schedulesByDate[$dateKey]) || $msgNum > $schedulesByDate[$dateKey]['message_num']) {
+            $schedulesByDate[$dateKey] = $entry;
+        }
+    }
+    return $schedulesByDate;
+}
+
+/**
  * Отримує останні повідомлення з Telegram та парсить графіки
  * @param int $limit Кількість повідомлень для обробки при першому запуску
  * @return array|false Дані графіку або false
@@ -66,7 +84,7 @@ function fetchFromTelegram($limit = 10) {
     }
     
     // Збираємо графіки по кожній унікальній даті та визначаємо ГАВ/СГАВ
-    $schedulesByDate = []; // date => parsed (найновіше повідомлення для кожної дати)
+    $scheduleEntries = []; // масив ['parsed' => ..., 'message_num' => ...] для злиття
     $emergencyModeDetected = false;
     $emergencyModeTime = 0;
     $maxMessageId = $lastKnownId ?? 0;
@@ -105,26 +123,20 @@ function fetchFromTelegram($limit = 10) {
         ]);
         
         if ($parsed && !empty($parsed['queues'])) {
-            $dateKey = $parsed['date'];
-            if (!isset($schedulesByDate[$dateKey])) {
-                $schedulesByDate[$dateKey] = $parsed;
-            } else {
-                $existingKey = dateToKey($schedulesByDate[$dateKey]['date']);
-                $newKey = dateToKey($parsed['date']);
-                if ($newKey !== false && $existingKey !== false) {
-                    $schedulesByDate[$dateKey] = $parsed;
-                }
-            }
+            $scheduleEntries[] = ['parsed' => $parsed, 'message_num' => $messageData['message_num']];
         }
     }
+    
+    $schedulesByDate = mergeSchedulesByMessageNum($scheduleEntries);
     
     if ($maxMessageId > ($lastKnownId ?? 0)) {
         saveLastTelegramId($maxMessageId);
     }
     
-    // Зберігаємо графіки для кожної знайденої дати
+    // Зберігаємо графіки для кожної знайденої дати (витягуємо parsed з обгортки)
     $lastSaved = null;
-    foreach ($schedulesByDate as $parsed) {
+    foreach ($schedulesByDate as $entry) {
+        $parsed = $entry['parsed'];
         $em = $parsed['emergency_mode'];
         if ($emergencyModeTime > 0) {
             $em = $emergencyModeDetected;
@@ -160,7 +172,7 @@ function fetchFromTelegram($limit = 10) {
         if ($key >= $todayKey) {
             $dateDMY = keyToDate($key);
             if ($dateDMY !== false && isset($schedulesByDate[$dateDMY])) {
-                $parsed = $schedulesByDate[$dateDMY];
+                $parsed = $schedulesByDate[$dateDMY]['parsed'];
                 $em = $parsed['emergency_mode'];
                 if ($emergencyModeTime > 0) {
                     $em = $emergencyModeDetected;
