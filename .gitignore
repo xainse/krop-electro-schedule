@@ -36,6 +36,8 @@ api/config.php
 
 # Test dependencies
 tests/frontend/node_modules/
+tests/frontend/test-results/
+tests/frontend/playwright-report/
 tests/backend/vendor/
 tests/backend/.phpunit.result.cache
 

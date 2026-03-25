@@ -37,6 +37,25 @@ npm install        # Перший раз
 npm test           # Запустити всі тести
 ```
 
+### Frontend (e2e) — Playwright
+
+```bash
+cd tests/frontend
+npm install
+#
+# 1) Завантажити браузери для Playwright (потрібен інтернет)
+#
+npm run playwright:install
+npm run test:e2e  # Запустити e2e у headless режимі
+```
+
+Для дебагу:
+
+```bash
+cd tests/frontend
+npm run test:e2e:headed
+```
+
 ### Backend (PHP)
 
 ```bash

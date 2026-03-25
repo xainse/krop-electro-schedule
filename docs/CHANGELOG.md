@@ -5,6 +5,20 @@
 Формат заснований на [Keep a Changelog](https://keepachangelog.com/uk/1.0.0/),
 і цей проєкт дотримується [Semantic Versioning](https://semver.org/lang/uk/).
 
+## [3.9] - 2026-03-25
+
+### Додано
+- E2E-тести на Playwright для `index.html`: рендер сітки з live fixtures, перевірка банера `emergency_mode`, та fallback при помилці API.
+- Project skill `commit-by-project-rules` для стандартизованого процесу коміту за правилами репозиторію.
+
+### Виправлено
+- Нестабільний e2e тест fallback: перевірка переведена на стабільні маркери (`updatedMeta`, `apiErrorMsg`, стан сітки) замість `statusMsg`, який може перезаписуватись паралельним `loadAllQueues()`.
+- Конфіг Playwright для macOS: стабілізовано запуск через `channel: 'chrome'` та `workers: 1`.
+
+### Змінено
+- Оновлено `tests/frontend/package.json` (скрипти `test:e2e`, `test:e2e:headed`, `playwright:install` та dev-залежності Playwright/TypeScript).
+- Оновлено `tests/README.md` інструкціями для локального запуску e2e.
+
 ## [3.8] - 2026-03-03
 
 ### Змінено
