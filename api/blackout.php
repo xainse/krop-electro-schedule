@@ -8,9 +8,16 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
+function jsonFlags($pretty = false) {
+    $flags = JSON_UNESCAPED_UNICODE;
+    if ($pretty) $flags |= JSON_PRETTY_PRINT;
+    // PHP < 7.2 has no JSON_INVALID_UTF8_SUBSTITUTE; bare constant name becomes a string and breaks `|`.
+    if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) $flags |= JSON_INVALID_UTF8_SUBSTITUTE;
+    return $flags;
+}
 function respond($data, $status = 200) {
     http_response_code($status);
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE);
+    echo json_encode($data, jsonFlags(true));
     exit;
 }
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -49,7 +56,7 @@ function readBlackoutCache($path) {
     return is_array($data) ? $data : null;
 }
 function writeBlackoutCache($path, $data) {
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    $json = json_encode($data, jsonFlags());
     $tmp = tempnam(dirname($path), 'blackout-');
     if ($tmp === false) return false;
     if (@file_put_contents($tmp, $json, LOCK_EX) === false || !@rename($tmp, $path)) {
