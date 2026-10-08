@@ -1,12 +1,12 @@
 ---
 name: deploy-api-ftp
-description: Deploys PHP API to freehost via FTP from .env, syncs only changed files, deletes obsolete remote files, clears cache, and pulls logs for local analysis. Use when the user asks to deploy API, update server code, sync FTP, clear remote cache, or download production logs.
+description: Deploys PHP API to freehost via verified FTPS from .env, syncs only changed files, deletes obsolete remote files, clears cache, and pulls logs for local analysis. Use when the user asks to deploy API, update server code, sync FTP, clear remote cache, or download production logs.
 disable-model-invocation: true
 ---
 
-# Deploy API (FTP)
+# Deploy API (FTPS)
 
-Оновлює PHP API на хостингу. Підключення лише через **FTP (порт 21)** — SFTP на цьому хості недоступний. Креденшали з кореневого `.env`.
+Оновлює PHP API на хостингу. Підключення через **explicit FTPS (порт 21)** з перевіркою сертифіката та шифруванням data channel. Plaintext FTP заборонений; якщо AUTH TLS/сертифікат/PROT P не проходить, це блокер деплою. Креденшали з кореневого `.env`.
 
 ## When to use
 

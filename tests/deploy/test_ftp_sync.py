@@ -166,10 +166,39 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(len(list(self.backups.iterdir())), 1)
 
     def test_wrong_destination_rejected_before_connect(self):
-        with patch.object(sync.ftplib, 'FTP') as ftp:
+        with patch.object(sync.ftplib, 'FTP_TLS') as ftp:
             with self.assertRaises(ValueError):
                 sync.connect({'ftp_dir': '/www.xain.in.ua'})
             ftp.assert_not_called()
+
+    def test_ftps_verifies_certificate_and_encrypts_data(self):
+        with patch.object(sync.ftplib, 'FTP_TLS') as cls:
+            ftp = cls.return_value
+            sync.connect(dict(self.env, ftp_login='test-user', ftp_pass='test-password'))
+            context = cls.call_args.kwargs['context']
+            self.assertTrue(context.check_hostname)
+            self.assertEqual(context.verify_mode, sync.ssl.CERT_REQUIRED)
+            self.assertEqual([call[0] for call in ftp.method_calls],
+                             ['connect', 'auth', 'login', 'prot_p', 'cwd'])
+
+    def test_tls_failure_never_sends_password_or_falls_back(self):
+        with patch.object(sync.ftplib, 'FTP_TLS') as cls, patch.object(sync.ftplib, 'FTP') as plain:
+            ftp = cls.return_value
+            ftp.auth.side_effect = sync.ssl.SSLCertVerificationError('bad certificate')
+            with self.assertRaises(sync.ssl.SSLCertVerificationError):
+                sync.connect(dict(self.env, ftp_login='test-user', ftp_pass='test-password'))
+            ftp.login.assert_not_called()
+            ftp.close.assert_called_once()
+            plain.assert_not_called()
+
+    def test_data_tls_failure_stops_before_reading_server(self):
+        with patch.object(sync.ftplib, 'FTP_TLS') as cls:
+            ftp = cls.return_value
+            ftp.prot_p.side_effect = ftplib.error_perm('534 TLS required')
+            with self.assertRaises(ftplib.error_perm):
+                sync.connect(dict(self.env, ftp_login='test-user', ftp_pass='test-password'))
+            ftp.cwd.assert_not_called()
+            ftp.close.assert_called_once()
 
 
 if __name__ == '__main__':

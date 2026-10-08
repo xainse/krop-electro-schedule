@@ -9,6 +9,7 @@ import io
 import posixpath
 import uuid
 import sys
+import ssl
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable
@@ -88,11 +89,20 @@ def md5_bytes(data: bytes) -> str:
 def connect(env: dict[str, str]) -> ftplib.FTP:
     if env["ftp_dir"].rstrip("/") != "/www.xain.in.ua/api":
         raise ValueError("Refusing to sync outside /www.xain.in.ua/api")
-    ftp = ftplib.FTP()
-    ftp.connect(env["ftp_host"], 21, timeout=60)
-    ftp.login(env["ftp_login"], env["ftp_pass"])
-    ftp.cwd(env["ftp_dir"])
-    return ftp
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    ftp = ftplib.FTP_TLS(context=context)
+    try:
+        ftp.connect(env["ftp_host"], 21, timeout=20)
+        # Negotiate and verify TLS before sending any credentials.
+        ftp.auth()
+        ftp.login(env["ftp_login"], env["ftp_pass"])
+        ftp.prot_p()  # Encrypt listings and all file transfers too.
+        ftp.cwd(env["ftp_dir"])
+        return ftp
+    except Exception:
+        ftp.close()
+        raise  # Never retry via plaintext FTP or with certificate checks disabled.
 
 
 def nlst(ftp: ftplib.FTP) -> set[str]:
@@ -362,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     env = load_env(Path(args.env))
 
-    # Reality check: this host exposes FTP:21, not SFTP:22.
+    # Explicit FTPS on port 21; a host without verified TLS is a deployment blocker.
     ftp = connect(env)
     try:
         if args.cmd == "status":

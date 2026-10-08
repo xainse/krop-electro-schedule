@@ -4,7 +4,7 @@
 
 | Fact | Value |
 |------|-------|
-| Protocol | **FTP** port 21 (plain). Port 22/SFTP closed. |
+| Protocol | **Explicit FTPS** port 21 with verified TLS and PROT P. Host support requires a successful status probe; never fall back to plaintext. |
 | Host | from `.env` `ftp_host` (freehost `ftp.s61...`) |
 | Remote API dir | `.env` `ftp_dir` → `/www.xain.in.ua/api` |
 | Public URL | `https://xain.in.ua/api/blackout.php` |
@@ -48,6 +48,10 @@ Remote historically uses:
 - `source_content_YYYY-MM-DD.log`
 
 Local/newer code may also write `api_YYYY-MM-DD.log`. `pull-logs` matches by date substring.
+
+## Transport migration
+
+Run `status` to verify FTPS support without changing remote files. A DNS/network failure does not prove that FTPS is unsupported. After the first verified secure connection, rotate the previously used FTP password through the hosting control panel and keep the account scoped to the API directory. Never print credentials or disable certificate validation.
 
 ## Rollback
 
