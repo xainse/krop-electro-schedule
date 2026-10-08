@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FTP sync for electro-scheduler API (freehost). Credentials from repo-root .env."""
+"""Verified FTPS sync for electro-scheduler API. Credentials from repo-root .env."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ LOCAL_LOGS = LOCAL_API / "logs"
 DEPLOY_FILES = (
     ".htaccess",
     "bootstrap.php",
+    "security.php",
+    "http.php",
     "response.php",
     "parser.php",
     "data.php",
@@ -65,6 +67,7 @@ LOGS_HTACCESS = "Require all denied\n"
 def load_env(path: Path) -> dict[str, str]:
     if not path.is_file():
         raise SystemExit(f"Missing {path}. Create it with ftp_host, ftp_login, ftp_pass, ftp_dir.")
+    path.chmod(0o600)
     out: dict[str, str] = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -322,7 +325,8 @@ def cmd_clear_cache(ftp: ftplib.FTP, env: dict[str, str], *, dry_run: bool) -> i
 
 
 def cmd_pull_logs(ftp: ftplib.FTP, env: dict[str, str], days: int) -> int:
-    LOCAL_LOGS.mkdir(parents=True, exist_ok=True)
+    LOCAL_LOGS.mkdir(mode=0o700, parents=True, exist_ok=True)
+    LOCAL_LOGS.chmod(0o700)
     ftp.cwd(env["ftp_dir"] + "/logs")
     remote = nlst(ftp)
     wanted_dates = {
@@ -333,8 +337,11 @@ def cmd_pull_logs(ftp: ftplib.FTP, env: dict[str, str], days: int) -> int:
         if not name.endswith(".log"):
             continue
         if any(d in name for d in wanted_dates):
+            if Path(name).name != name or name.startswith('.'):
+                raise ValueError('Unsafe remote log filename')
             data = retr(ftp, name)
             (LOCAL_LOGS / name).write_bytes(data)
+            (LOCAL_LOGS / name).chmod(0o600)
             pulled.append((name, len(data)))
             print(f"pulled {name} ({len(data)} bytes)")
     if not pulled:

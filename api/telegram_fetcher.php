@@ -16,6 +16,7 @@
 
 // Завантажуємо модулі
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/http.php';
 require_once __DIR__ . '/data.php';
 require_once __DIR__ . '/parser.php';
 
@@ -78,7 +79,7 @@ function fetchFromTelegram($limit = 10) {
             $emergencyModeTime = $itemTime;
         }
         
-        $parsed = parseScheduleMessage($messageData['text'], $itemTime ?: time());
+        $parsed = $itemTime ? (parseScheduleMessage($messageData['text'], $itemTime) ?: parseNoScheduleNotice($messageData['text'], $itemTime)) : false;
         
         if (function_exists('logSourceContent')) {
             logSourceContent('telegram', $messageData['text'], [
@@ -98,7 +99,7 @@ function fetchFromTelegram($limit = 10) {
             'has_schedule' => $parsed !== false && !empty($parsed['queues'])
         ]);
         
-        if ($parsed && !empty($parsed['queues'])) {
+        if ($parsed && (!empty($parsed['queues']) || !empty($parsed['not_announced']))) {
             $scheduleEntries[] = ['parsed' => $parsed, 'message_num' => $messageData['message_num']];
         }
     }
@@ -117,6 +118,7 @@ function fetchFromTelegram($limit = 10) {
         if ($emergencyModeTime > 0) {
             $em = $emergencyModeDetected;
         }
+        if (!empty($parsed['not_announced'])) continue;
         $saved = saveSchedules(
             $parsed['queues'],
             $parsed['date'],
@@ -156,7 +158,9 @@ function fetchFromTelegram($limit = 10) {
                 return [
                     'date' => $parsed['date'],
                     'emergency_mode' => $em,
-                    'queues' => $parsed['queues']
+                    'queues' => $parsed['queues'],
+                    'not_announced' => !empty($parsed['not_announced']),
+                    'notice_verified' => ($parsed['notice_verified'] ?? false) === true,
                 ];
             }
         }
@@ -171,74 +175,7 @@ function fetchFromTelegram($limit = 10) {
  * @return string|false HTML або false
  */
 function fetchTelegramHTML($url) {
-    // Спочатку пробуємо через curl
-    if (function_exists('curl_init')) {
-        $ch = curl_init();
-        if ($ch !== false) {
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 4);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language: uk-UA,uk;q=0.9,en;q=0.8',
-                'Accept-Encoding: gzip, deflate, br',
-                'Cache-Control: no-cache',
-                'Pragma: no-cache'
-            ]);
-            curl_setopt($ch, CURLOPT_ENCODING, '');
-            
-            $content = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $error = curl_error($ch);
-            // curl_close не потрібен в PHP 8.0+
-            
-            if ($content !== false && $httpCode == 200 && strlen($content) > 0) {
-                return $content;
-            } else {
-                error_log("Telegram fetcher: cURL error - HTTP {$httpCode}, {$error}");
-            }
-        }
-    }
-    
-    // Fallback на file_get_contents
-    if (ini_get('allow_url_fopen')) {
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'header' => [
-                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language: uk-UA,uk;q=0.9,en;q=0.8'
-                ],
-                'timeout' => 2,
-                'follow_location' => 1,
-                'ignore_errors' => false
-            ],
-            'ssl' => [
-                'verify_peer' => true,
-                'verify_peer_name' => true
-            ]
-        ]);
-        
-        $content = @file_get_contents($url, false, $context);
-        $headers = function_exists('http_get_last_response_headers') ? http_get_last_response_headers() : ($http_response_header ?? []);
-        $status = null;
-        foreach ($headers ?? [] as $header) {
-            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $m)) $status = (int)$m[1];
-        }
-        if ($content !== false && $status === 200 && strlen($content) > 0) {
-            return $content;
-        } else {
-            error_log("Telegram fetcher: file_get_contents failed");
-        }
-    }
-    
-    return false;
+    return fetchUpstreamHtml($url);
 }
 
 /**

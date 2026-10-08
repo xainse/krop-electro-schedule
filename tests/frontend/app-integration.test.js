@@ -9,8 +9,8 @@ const payload = extra => ({ success: true, available: true, stale: false, update
 const response = data => ({ ok: true, status: 200, text: async () => JSON.stringify(data) });
 let dom;
 const tick = () => new Promise(resolve => setImmediate(resolve));
-async function start(fetch, prepare = () => {}) {
-  dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://schedule.example/index.html' });
+async function start(fetch, prepare = () => {}, url = 'https://schedule.example/index.html') {
+  dom = new JSDOM(html, { runScripts: 'outside-only', url });
   dom.window.fetch = fetch;
   prepare(dom.window);
   dom.window.eval(script);
@@ -79,4 +79,29 @@ test('overview rendering does not overwrite selected queue status', async () => 
   await start(async url => response(payload(url.includes('all=1') ? {queues:{'1.1':''}} : {})));
   expect(text('statusMsg')).toBe('Готово');
   expect(dom.window.document.querySelectorAll('#overviewTableBody td[aria-label]')).toHaveLength(288);
+});
+
+
+test.each(['https://untrusted.example', 'http://127.0.0.1:9999', '//untrusted.example'])('production ignores API override %s', async base => {
+  const urls = [];
+  await start(async url => { urls.push(url); return response(payload()); }, () => {},
+    'https://xainse.github.io/krop-electro-schedule/?api_base=' + encodeURIComponent(base));
+  expect(urls.length).toBe(2);
+  expect(urls.every(url => new URL(url).origin === 'https://xain.in.ua')).toBe(true);
+});
+test('local development accepts only a loopback API origin', async () => {
+  const urls = [];
+  await start(async url => { urls.push(url); return response(payload()); }, () => {},
+    'http://127.0.0.1:8080/?api_base=http://127.0.0.1:8080');
+  expect(urls.every(url => url.startsWith('http://127.0.0.1:8080/'))).toBe(true);
+});
+
+
+test.each([
+  { date: '01.01.2000' }, { stale: true }, { updated: null },
+  { updated: Math.floor(Date.now()/1000) - 900 }, { updated: Math.floor(Date.now()/1000) + 3600 },
+])('unverified absence notice does not become current: %j', async override => {
+  await start(async () => response(payload({not_announced: true, available: false, ...override})));
+  expect(text('statusMsg')).not.toBe('Готово');
+  expect(text('apiErrorMsg')).not.toBe('Графіки відключення не оголошені');
 });

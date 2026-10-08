@@ -2,29 +2,37 @@ name: Tests
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - run: python3 scripts/check-secrets.py
       - run: python3 -m unittest discover -s tests/deploy -v
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: tests/frontend/package-lock.json
-      - uses: shivammathur/setup-php@v2
+      - run: node scripts/update-csp.js --check
+      - uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
         with:
           php-version: '8.3'
           extensions: dom, mbstring, curl
           coverage: none
-      - run: composer install --no-interaction --prefer-dist
+      - run: composer install --no-interaction --prefer-dist --no-plugins --no-scripts
         working-directory: tests/backend
       - run: vendor/bin/phpunit
         working-directory: tests/backend
-      - run: npm ci
+      - run: npm ci --ignore-scripts
         working-directory: tests/frontend
       - run: npm test -- --runInBand
         working-directory: tests/frontend
@@ -32,3 +40,25 @@ jobs:
         working-directory: tests/frontend
       - run: npm run test:e2e
         working-directory: tests/frontend
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Audit npm including test dependencies (issue 24 remains open)
+        id: npm-audit
+        run: npm audit --audit-level=moderate
+        working-directory: tests/frontend
+      - name: Audit Composer including test dependencies
+        if: ${{ !cancelled() }}
+        run: composer audit --locked --no-interaction
+        working-directory: tests/backend

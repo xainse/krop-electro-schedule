@@ -7,6 +7,10 @@ header('Access-Control-Max-Age: 86400');
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
+header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: no-referrer');
+header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
 
 function jsonFlags($pretty = false) {
     $flags = JSON_UNESCAPED_UNICODE;
@@ -40,14 +44,21 @@ if ((!$requestAll || $queue !== '') && !preg_match('/^[1-6]\.[12]$/D', $queue)) 
     respond(['success' => false, 'error' => 'Invalid queue. Expected 1.1 through 6.2'], 400);
 }
 
+require_once __DIR__ . '/security.php';
+$retryAfter = checkRequestLimit($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+if ($retryAfter > 0) {
+    header('Retry-After: ' . $retryAfter);
+    respond(['success' => false, 'error' => 'Too many requests'], 429);
+}
+
 require_once __DIR__ . '/telegram_fetcher.php';
 require_once __DIR__ . '/site_fetcher.php';
 require_once __DIR__ . '/response.php';
 $start = microtime(true);
-if (!is_dir(CACHE_DIR)) @mkdir(CACHE_DIR, 0755, true);
+if (!is_dir(CACHE_DIR)) @mkdir(CACHE_DIR, 0700, true);
 // Defense in depth if the host disables rewrite rules in the API directory.
 foreach ([CACHE_DIR, LOGS_DIR] as $directory) {
-    if (!is_dir($directory)) @mkdir($directory, 0755, true);
+    if (!is_dir($directory)) @mkdir($directory, 0700, true);
     if (!is_file($directory . '/.htaccess')) @file_put_contents($directory . '/.htaccess', "Require all denied\n");
 }
 $cachePath = CACHE_DIR . '/blackout_cache.json';
@@ -78,39 +89,17 @@ if ($view['stale']) {
             if (scheduleResponse($cache)['stale'] && time() - $lastCheck >= TELEGRAM_CHECK_INTERVAL) {
                 // Failed requests are throttled too. Public force_refresh cannot bypass this.
                 @file_put_contents($lastCheckPath, (string)time(), LOCK_EX);
-                $sourcesChecked = false;
-                $fresh = null;
                 $telegram = fetchFromTelegram(20);
-                if (isCurrentSchedulePayload($telegram)) {
-                    $fresh = $telegram;
-                    $fresh['source'] = TELEGRAM_CHANNEL_URL;
-                    $sourcesChecked = true;
-                } else {
-                    if ($telegram !== false) $sourcesChecked = true;
+                if (is_array($telegram)) $telegram['source'] = TELEGRAM_CHANNEL_URL;
+                $site = null;
+                if (!isCurrentSchedulePayload($telegram)) {
                     $site = fetchFromSite();
-                    if (isCurrentSchedulePayload($site)) {
-                        $fresh = $site;
-                        $fresh['source'] = SITE_URL;
-                        $sourcesChecked = true;
-                    } elseif ($site !== false) {
-                        $sourcesChecked = true;
-                    }
+                    if (is_array($site)) $site['source'] = SITE_URL;
                 }
+                $fresh = selectSourcePayload($telegram, $site);
                 if ($fresh) {
-                    unset($fresh['not_announced']);
                     $fresh['verified_at'] = time();
                     $cache = $fresh;
-                    writeBlackoutCache($cachePath, $cache);
-                } elseif ($sourcesChecked) {
-                    // Джерела відповіли без помилок, але графіка на сьогодні немає.
-                    $cache = [
-                        'date' => date('d.m.Y'),
-                        'verified_at' => time(),
-                        'queues' => [],
-                        'not_announced' => true,
-                        'emergency_mode' => null,
-                        'source' => null,
-                    ];
                     writeBlackoutCache($cachePath, $cache);
                 }
             }
@@ -128,8 +117,5 @@ logApiRequest([
     'source' => $response['source'] ?? 'unavailable',
     'success' => $response['available'],
     'response_time_ms' => round((microtime(true) - $start) * 1000, 2),
-    'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
-    'user_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 512),
 ]);
-cleanOldLogs();
 respond($response, $cache === null && !$response['available'] ? 503 : 200);

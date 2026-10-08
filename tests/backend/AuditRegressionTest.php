@@ -23,9 +23,9 @@ class AuditRegressionTest extends TestCase {
         $this->assertTrue(scheduleResponse($data, '1.1', $now + 601)['stale']);
         $this->assertSame($now - 20, scheduleResponse($data, '1.1', $now + 601)['updated']);
     }
-    public function testNotAnnouncedWhenSourcesCheckedWithoutTodaySchedule(): void {
+    public function testNotAnnouncedRequiresVerifiedNotice(): void {
         $now = strtotime('2026-10-08 12:00:00');
-        $data = ['date' => '08.10.2026', 'verified_at' => $now - 10, 'queues' => [], 'not_announced' => true];
+        $data = ['date' => '08.10.2026', 'verified_at' => $now - 10, 'queues' => [], 'not_announced' => true, 'notice_verified' => true];
         $response = scheduleResponse($data, '1.1', $now);
         $this->assertTrue($response['not_announced']);
         $this->assertFalse($response['available']);
@@ -34,6 +34,10 @@ class AuditRegressionTest extends TestCase {
         $this->assertNull($response['schedule']);
         $this->assertFalse(isCurrentSchedulePayload(['date' => '08.10.2026', 'queues' => [], 'not_announced' => true], $now));
         $this->assertTrue(isCurrentSchedulePayload(['date' => '08.10.2026', 'queues' => ['1.1' => '']], $now));
+        unset($data['notice_verified']);
+        $this->assertTrue(scheduleResponse($data, '1.1', $now)['stale']);
+        $this->assertFalse(scheduleResponse($data, '1.1', $now)['not_announced']);
+        $this->assertNull(selectSourcePayload($data, null, $now));
     }
     public function testEndpointReturnsNotAnnouncedWithoutHttpError(): void {
         $runtime = sys_get_temp_dir() . '/krop-not-announced-' . bin2hex(random_bytes(5));
@@ -44,6 +48,7 @@ class AuditRegressionTest extends TestCase {
             'verified_at' => $timestamp,
             'queues' => [],
             'not_announced' => true,
+            'notice_verified' => true,
         ]));
         file_put_contents($runtime . '/last_source_check.txt', (string)time());
         $endpoint = realpath(__DIR__ . '/../../api/blackout.php');
@@ -60,6 +65,21 @@ class AuditRegressionTest extends TestCase {
             @unlink($runtime . '/logs/.htaccess'); @rmdir($runtime . '/logs');
             @unlink($runtime . '/.htaccess'); @rmdir($runtime);
         }
+    }
+    public function testAbsenceRequiresExplicitDatedNotice(): void {
+        $now = strtotime('2026-10-08 12:00:00');
+        $this->assertNull(selectSourcePayload(null, false, $now));
+        $this->assertNull(selectSourcePayload(false, null, $now));
+        $this->assertFalse(parseNoScheduleNotice('Сторінка на технічному обслуговуванні'));
+        $this->assertFalse(parseNoScheduleNotice('Графіки відключення не оголошені'));
+        $notice = parseNoScheduleNotice('Сьогодні графіки відключення не оголошені', $now);
+        $this->assertTrue($notice['not_announced']);
+        $this->assertSame($notice, selectSourcePayload($notice, false, $now));
+        $this->assertNull(selectSourcePayload($notice, null, $now + 86400));
+        $schedule = ['date' => '08.10.2026', 'queues' => ['1.1' => '02:00-04:00']];
+        $this->assertSame($schedule, selectSourcePayload($notice, $schedule, $now));
+        $notice['verified_at'] = $now - 900;
+        $this->assertFalse(scheduleResponse($notice, '1.1', $now)['not_announced']);
     }
     public function testTomorrowDoesNotReplaceToday(): void {
         $key = date('Y-m-d');

@@ -55,7 +55,7 @@ python3 .cursor/skills/deploy-api-ftp/scripts/ftp_sync.py <command>
 ## Deploy rules
 
 **Завантажувати (allowlist):**
-`.htaccess`, `blackout.php`, `bootstrap.php`, `response.php`, `parser.php`, `data.php`, `site_fetcher.php`, `telegram_fetcher.php`
+`.htaccess`, `blackout.php`, `bootstrap.php`, `security.php`, `http.php`, `response.php`, `parser.php`, `data.php`, `site_fetcher.php`, `telegram_fetcher.php`
 
 **Ніколи не чіпати / не перезаписувати:**
 `config.php`, вміст `cache/` (крім явного clear), історичні `logs/*.log`

@@ -48,6 +48,13 @@ function parseScheduleMessage($text, $referenceTime = null) {
     ];
 }
 
+/** Only an explicit, dated source statement establishes that no schedule was announced. */
+function parseNoScheduleNotice($text, $referenceTime = null) {
+    $date = extractDate($text, $referenceTime);
+    if (!$date || !preg_match('/графік(?:и|ів)?[^.!?\n]{0,80}(?:не\s+(?:оголошен[іо]|застосовуватимуться|застосовуються)|відсутн[іій])/ui', $text)) return false;
+    return ['date' => $date, 'queues' => [], 'not_announced' => true, 'notice_verified' => true, 'emergency_mode' => detectEmergencyMode($text)];
+}
+
 /**
  * Виявляє чи активний графік аварійних відключень (ГАВ)
  * @param string $text Текст повідомлення

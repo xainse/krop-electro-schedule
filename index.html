@@ -3,6 +3,8 @@
 
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-mONP+LU4XXiCXGKhxeVQPHUS85djD0JE0JNbgkGj3d4=' 'sha256-rZUMIPLpdNP58ff+5dOrDbjW28F7fA54xWgyxaEoyDw=' https://www.googletagmanager.com; connect-src 'self' https://xain.in.ua https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google-analytics.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Графік 1.1 — 24 години</title>
   <meta name="description" content="Графік відключень електрики на 24 години для черги 1.1. Візуалізація стану електрики протягом доби." />
@@ -95,19 +97,25 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '4.5';
+    const VERSION = '4.6';
     
-    // Базовий URL API: з query ?api_base=..., на GitHub Pages — дефолт xain.in.ua, інакше відносний шлях
-    let apiBase = '';
-    (function () {
-      const params = new URLSearchParams(window.location.search);
-      const base = params.get('api_base');
-      if (base != null && base !== '') {
-        apiBase = base.replace(/\/$/, '');
-      } else if (window.location.origin && window.location.origin.indexOf('github.io') !== -1) {
-        apiBase = 'https://xain.in.ua';
+    // Production always uses the trusted public API. Overrides are development-only.
+    const TRUSTED_API_ORIGIN = 'https://xain.in.ua';
+    const isLoopback = host => ['127.0.0.1', '[::1]'].includes(host);
+    let apiBase = TRUSTED_API_ORIGIN;
+    if (isLoopback(window.location.hostname)) {
+      apiBase = '';
+      const base = new URLSearchParams(window.location.search).get('api_base');
+      if (base) {
+        try {
+          const url = new URL(base);
+          if (['http:', 'https:'].includes(url.protocol) && isLoopback(url.hostname) &&
+              url.origin === window.location.origin && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash) {
+            apiBase = url.origin;
+          }
+        } catch { /* Invalid development overrides are ignored. */ }
       }
-    })();
+    }
 
     // fetch з таймаутом (мс), щоб не чекати надто довго при недоступному API
     const API_FETCH_TIMEOUT_MS = 15000;
@@ -661,15 +669,19 @@
         if (request !== loadRequest || queue !== currentQueue) return;
         if (data.success !== true || (data.queue && data.queue !== queue)) throw new Error('Некоректна відповідь API');
         if (data.not_announced === true) {
+          if (data.date !== todayKyiv() || data.stale !== false || !Number.isFinite(data.updated) ||
+              data.updated <= 0 || data.updated > Date.now() / 1000 + 60 || Date.now() / 1000 - data.updated >= 600) {
+            throw new Error('Непідтверджене повідомлення джерела');
+          }
           cachedEntry = null;
           storageSet(cacheKey(), 'null');
           render(Array(48).fill(null));
-          showEmergency(null);
+          showEmergency(data.emergency_mode === true);
           updatedMeta.textContent = Number.isFinite(data.updated) && data.updated > 0
             ? `Перевірено: ${new Date(data.updated * 1000).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`
             : 'Актуальний графік відсутній';
           statusMsg.textContent = 'Готово';
-          apiErrorMsg.textContent = data.message || 'Графіки відключення не оголошені';
+          apiErrorMsg.textContent = 'Графіки відключення не оголошені';
           apiErrorMsg.style.display = 'block';
           return;
         }

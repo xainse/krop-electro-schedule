@@ -9,8 +9,10 @@ function scheduleResponse($data, $queue = null, $now = null) {
     $verified = is_array($data) && isset($data['verified_at']) && is_numeric($data['verified_at']);
     $updated = $verified ? (int)$data['verified_at'] : null;
     $stale = !$current || !$verified || $updated > $now || $now - $updated >= 600;
+    // v4.4 created absence markers from parsing failures; do not trust that legacy cache.
+    if (!empty($data['not_announced']) && ($data['notice_verified'] ?? false) !== true) $stale = true;
     $queues = $current && $verified && is_array($data['queues'] ?? null) ? $data['queues'] : [];
-    $notAnnounced = $current && $verified && !empty($data['not_announced']);
+    $notAnnounced = !$stale && !empty($data['not_announced']);
     $result = [
         'success' => true,
         'date' => $date,
@@ -38,4 +40,17 @@ function isCurrentSchedulePayload($data, $now = null) {
         && empty($data['not_announced'])
         && !empty($data['queues'])
         && dateToKey($data['date'] ?? null) === date('Y-m-d', $now);
+}
+
+/** Select only a real schedule or an explicit dated absence notice; failures preserve cache. */
+function selectSourcePayload($telegram, $site, $now = null) {
+    $now = $now ?? time();
+    foreach ([$telegram, $site] as $item) {
+        if (isCurrentSchedulePayload($item, $now)) return $item;
+    }
+    foreach ([$telegram, $site] as $item) {
+        if (is_array($item) && ($item['not_announced'] ?? false) === true && ($item['notice_verified'] ?? false) === true && empty($item['queues'])
+            && dateToKey($item['date'] ?? null) === date('Y-m-d', $now)) return $item;
+    }
+    return null;
 }

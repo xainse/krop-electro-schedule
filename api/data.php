@@ -15,6 +15,7 @@
 
 // Завантажуємо конфігурацію
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/security.php';
 
 /**
  * Конвертує дату DD.MM.YYYY → YYYY-MM-DD (для ключів/сортування)
@@ -81,7 +82,7 @@ function loadSchedulesFile() {
  */
 function writeSchedulesFile($data) {
     if (!is_dir(CACHE_DIR)) {
-        if (!@mkdir(CACHE_DIR, 0755, true)) {
+        if (!@mkdir(CACHE_DIR, 0700, true)) {
             return false;
         }
     }
@@ -97,7 +98,7 @@ function writeSchedulesFile($data) {
         @unlink($tempFile);
         return false;
     }
-    @chmod($tempFile, 0644);
+    @chmod($tempFile, 0600);
 
     if (!@rename($tempFile, SCHEDULES_FILE)) {
         @unlink($tempFile);
@@ -261,7 +262,7 @@ function logSourceContent($source, $content, $meta = []) {
     }
     if (!defined('LOGS_DIR') || !is_dir(LOGS_DIR)) {
         if (defined('LOGS_DIR') && LOGS_DIR) {
-            @mkdir(LOGS_DIR, 0755, true);
+            @mkdir(LOGS_DIR, 0700, true);
         } else {
             return;
         }
@@ -283,11 +284,7 @@ function logSourceContent($source, $content, $meta = []) {
         $logEntry['truncated'] = true;
     }
     $logFile = LOGS_DIR . '/source_content_' . date('Y-m-d') . '.log';
-    $line = json_encode($logEntry, JSON_UNESCAPED_UNICODE) . "\n";
-    @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
-    if (file_exists($logFile)) {
-        @chmod($logFile, 0644);
-    }
+    appendBoundedLog($logFile, $logEntry);
 }
 
 /**
@@ -302,7 +299,7 @@ function logApiRequest($data) {
     
     // Створюємо папку якщо її немає
     if (!is_dir(LOGS_DIR)) {
-        @mkdir(LOGS_DIR, 0755, true);
+        @mkdir(LOGS_DIR, 0700, true);
     }
     
     $date = date('Y-m-d');
@@ -317,19 +314,9 @@ function logApiRequest($data) {
         'source' => $data['source'] ?? 'unknown',
         'response_time_ms' => $data['response_time_ms'] ?? 0,
         'success' => $data['success'] ?? false,
-        'ip' => $data['ip'] ?? '',
-        'user_agent' => $data['user_agent'] ?? ''
     ];
     
-    $jsonLine = json_encode($logEntry, JSON_UNESCAPED_UNICODE) . "\n";
-    
-    // Записуємо з блокуванням
-    @file_put_contents($logFile, $jsonLine, FILE_APPEND | LOCK_EX);
-    
-    // Встановлюємо права доступу
-    if (file_exists($logFile)) {
-        @chmod($logFile, 0644);
-    }
+    appendBoundedLog($logFile, $logEntry);
 }
 
 /**
@@ -366,7 +353,7 @@ function cleanOldLogs($daysToKeep = 30) {
 function saveTelegramMessage($messageData) {
     // Створюємо папку якщо її немає
     if (!is_dir(CACHE_DIR)) {
-        if (!@mkdir(CACHE_DIR, 0755, true)) {
+        if (!@mkdir(CACHE_DIR, 0700, true)) {
             return false;
         }
     }
@@ -430,7 +417,7 @@ function saveTelegramMessage($messageData) {
     }
     
     // Встановлюємо права доступу
-    @chmod($tempFile, 0644);
+    @chmod($tempFile, 0600);
     
     // Атомарно переміщуємо temp file на місце основного
     if (!@rename($tempFile, TELEGRAM_MESSAGES_FILE)) {
@@ -492,7 +479,7 @@ function getLastTelegramId() {
 function saveLastTelegramId($id) {
     // Створюємо папку якщо її немає
     if (!is_dir(CACHE_DIR)) {
-        if (!@mkdir(CACHE_DIR, 0755, true)) {
+        if (!@mkdir(CACHE_DIR, 0700, true)) {
             return false;
         }
     }
@@ -532,7 +519,7 @@ function saveLastTelegramId($id) {
     }
     
     // Встановлюємо права доступу
-    @chmod($tempFile, 0644);
+    @chmod($tempFile, 0600);
     
     // Атомарно переміщуємо temp file на місце основного
     if (!@rename($tempFile, TELEGRAM_MESSAGES_FILE)) {

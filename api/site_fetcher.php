@@ -10,6 +10,7 @@
 
 // Завантажуємо модулі
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/http.php';
 require_once __DIR__ . '/parser.php';
 require_once __DIR__ . '/data.php';
 
@@ -32,8 +33,8 @@ function fetchFromSite() {
     }
     
     if (!$parsed) {
-        // HTML отримано, але розкладу в контенті немає — це не збій джерела.
-        return null;
+        // Missing/changed markup is not proof that schedules were not announced.
+        return $extractedText === null ? false : parseNoScheduleNotice($extractedText);
     }
     
     // ГАВ визначаємо тією ж логікою, що й для Telegram (parser.php)
@@ -47,59 +48,7 @@ function fetchFromSite() {
  * @return string|false HTML або false
  */
 function fetchUrl($url) {
-    // Спочатку пробуємо через curl
-    if (function_exists('curl_init')) {
-        $ch = curl_init();
-        if ($ch !== false) {
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 4);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-            curl_setopt($ch, CURLOPT_ENCODING, '');
-            
-            $html = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            if ($html !== false && $httpCode == 200 && strlen($html) > 0) {
-                return $html;
-            }
-        }
-    }
-    
-    // Fallback на file_get_contents
-    if (ini_get('allow_url_fopen')) {
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'header' => [
-                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                ],
-                'timeout' => 2,
-                'follow_location' => 1,
-                'ignore_errors' => false
-            ],
-            'ssl' => [
-                'verify_peer' => true,
-                'verify_peer_name' => true
-            ]
-        ]);
-        
-        $html = @file_get_contents($url, false, $context);
-        $headers = function_exists('http_get_last_response_headers') ? http_get_last_response_headers() : ($http_response_header ?? []);
-        $status = null;
-        foreach ($headers ?? [] as $header) {
-            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $m)) $status = (int)$m[1];
-        }
-        if ($html !== false && $status === 200 && strlen($html) > 0) {
-            return $html;
-        }
-    }
-    
-    return false;
+    return fetchUpstreamHtml($url);
 }
 
 /**

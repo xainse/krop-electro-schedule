@@ -6,6 +6,6 @@ export async function mockApi(page: Page, overrides = {}) {
   await page.route('**/api/blackout.php**', route => {
     const url = new URL(route.request().url());
     const queue = url.searchParams.get('queue');
-    return route.fulfill({ json: queue ? { ...base, queue, schedule: queues[queue], ...overrides } : { ...base, queues, ...overrides } });
+    return route.fulfill({ headers: { 'Access-Control-Allow-Origin': '*' }, json: queue ? { ...base, queue, schedule: queues[queue], ...overrides } : { ...base, queues, ...overrides } });
   });
 }
