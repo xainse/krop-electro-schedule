@@ -13,7 +13,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "@playwright/test": "1.58.2",
     "typescript": "6.0.2",
-    "@types/node": "25.5.0"
+    "@types/node": "26.6.4"
   },
   "overrides": {
     "brace-expansion": "^1.1.21",
