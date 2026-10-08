@@ -68,7 +68,7 @@
       <div id="grid" class="grid" aria-label="Сітка станів на 24 години"></div>
     </div>
     <p class="meta" style="margin-top:10px">
-      Дані беруться зі сторінки <a href="https://kiroe.com.ua/electricity-blackout" target="_blank" rel="noopener noreferrer">https://kiroe.com.ua/electricity-blackout</a>.
+      Дані беруться зі сторінки <a id="sourceLink" href="https://kiroe.com.ua/electricity-blackout" target="_blank" rel="noopener noreferrer">https://kiroe.com.ua/electricity-blackout</a>.
       <span>
           <a href="https://github.com/xainse/krop-electro-schedule/blob/main/docs/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Версія:</a><span id="version">—</span>
       </span>
@@ -85,6 +85,7 @@
     </div>
     <div class="overview-table">
       <table id="overviewTable" aria-label="Таблиця графіків відключень для всіх черг">
+        <thead><tr><th scope="col">Черга</th><th scope="col">00:00</th><th scope="col">01:00</th><th scope="col">02:00</th><th scope="col">03:00</th><th scope="col">04:00</th><th scope="col">05:00</th><th scope="col">06:00</th><th scope="col">07:00</th><th scope="col">08:00</th><th scope="col">09:00</th><th scope="col">10:00</th><th scope="col">11:00</th><th scope="col">12:00</th><th scope="col">13:00</th><th scope="col">14:00</th><th scope="col">15:00</th><th scope="col">16:00</th><th scope="col">17:00</th><th scope="col">18:00</th><th scope="col">19:00</th><th scope="col">20:00</th><th scope="col">21:00</th><th scope="col">22:00</th><th scope="col">23:00</th></tr></thead>
         <tbody id="overviewTableBody">
           <!-- Ячейки будуть додані через JavaScript -->
         </tbody>
@@ -94,7 +95,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '4.0';
+    const VERSION = '4.1';
     
     // Базовий URL API: з query ?api_base=..., на GitHub Pages — дефолт xain.in.ua, інакше відносний шлях
     let apiBase = '';
@@ -115,8 +116,9 @@
       const id = setTimeout(() => ac.abort(), API_FETCH_TIMEOUT_MS);
       try {
         const res = await fetch(url, { ...opts, signal: ac.signal });
+        const body = await res.text();
         clearTimeout(id);
-        return res;
+        return { ok: res.ok, status: res.status, statusText: res.statusText, text: async () => body, json: async () => JSON.parse(body) };
       } catch (e) {
         clearTimeout(id);
         throw e;
@@ -145,7 +147,10 @@
     const queueSelect = document.getElementById('queueSelect');
     const apiErrorMsg = document.getElementById('apiErrorMsg');
     const emergencyMsg = document.getElementById('emergencyMsg');
-    let currentQueue = localStorage.getItem('queue') || '1.1';
+    function storageGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+    function storageSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
+    let currentQueue = storageGet('queue') || '1.1';
+    if (!/^[1-6]\.[12]$/.test(currentQueue)) currentQueue = '1.1';
     queueSelect.value = currentQueue;
     let API_URL = apiUrl('api/blackout.php') + '?queue=' + currentQueue;
     const gridEl = document.getElementById('grid');
@@ -162,8 +167,7 @@
     let previousHours = null;
     
     // Зберігаємо останні успішно завантажені дані та час оновлення
-    let lastSuccessfulData = null;
-    let lastSuccessfulTime = null;
+
 
     // Малюємо 24 порожні клітинки одразу
     function initialGrid() {
@@ -221,111 +225,29 @@
     // Парсер півгодинних періодів з формату "HH:MM-HH:MM"
     // Повертає масив з 48 елементів (кожен = 30 хвилин)
     function parseHalfHourSchedule(schedule) {
-      // За замовчуванням електрика є (true) для всіх 48 півгодин
+      const unknown = () => Array(48).fill(null);
+      if (typeof schedule !== 'string') return unknown();
+      if (schedule.trim() === '' || schedule.trim() === '-') return Array(48).fill(true);
       const periods = Array(48).fill(true);
-      
-      // Розбиваємо рядок по комах і обробляємо кожен діапазон
-      const ranges = schedule.split(',').map(s => s.trim()).filter(Boolean);
-      
-      for (const range of ranges) {
-        // Шукаємо формат "HH:MM-HH:MM" (наприклад "06:00-08:00" або "10:00-11:30")
-        const match = range.match(/^(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})$/);
-        if (match) {
-          const startHour = parseInt(match[1], 10);
-          const startMin = parseInt(match[2], 10);
-          const endHour = parseInt(match[3], 10);
-          const endMin = parseInt(match[4], 10);
-          
-          // Конвертуємо час в хвилини від початку доби
-          const startMinutes = startHour * 60 + startMin;
-          const endMinutes = endHour * 60 + endMin;
-          
-          // Конвертуємо в індекси півгодин (кожен індекс = 30 хвилин)
-          // Індекс 0 = 00:00-00:30, індекс 1 = 00:30-01:00, ...
-          const startIndex = Math.floor(startMinutes / 30);
-          const endIndex = Math.ceil(endMinutes / 30);
-          
-          // Позначаємо відключені періоди як false
-          // Використовуємо Math.min(endIndex, 48) для обробки випадку 24:00
-          for (let i = startIndex; i < Math.min(endIndex, 48); i++) {
-            periods[i] = false;
-          }
-        } else {
-          // Спробуємо старий формат "HH-HH" для сумісності
-          const oldMatch = range.match(/^(\d{1,2})\s*[-–]\s*(\d{1,2})$/);
-          if (oldMatch) {
-            const start = parseInt(oldMatch[1], 10);
-            const end = parseInt(oldMatch[2], 10);
-            
-            if (start >= 0 && start <= 24 && end >= 0 && end <= 24) {
-              // Конвертуємо години в індекси півгодин
-              const startIndex = start * 2;
-              const endIndex = Math.min(end * 2, 48);
-              
-              for (let i = startIndex; i < endIndex; i++) {
-                periods[i] = false;
-              }
-            }
-          }
+      for (const range of schedule.split(/[,;]/)) {
+        const m = range.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*[-–—−]\s*(\d{1,2})(?::(\d{2}))?$/);
+        if (!m) return unknown();
+        const sh = Number(m[1]), sm = Number(m[2] || 0), eh = Number(m[3]), em = Number(m[4] || 0);
+        if (sh > 23 || sm > 59 || eh > 24 || em > 59 || (eh === 24 && em !== 0)) return unknown();
+        const start = sh * 60 + sm, end = eh * 60 + em;
+        if (start === end) return unknown();
+        for (let i = 0; i < 48; i++) {
+          const left = i * 30, right = left + 30;
+          if (start < end ? left < end && right > start : right > start || left < end) periods[i] = false;
         }
       }
-      
       return periods;
     }
 
     // Гнучкий парсер відповіді API → масив із 48 елементів (півгодинні періоди): true (є), false (відключено), null (невідомо)
     function normalizeTo24(data) {
-      // 0) Порожній графік або "-" = немає відключень (усі години зі світлом)
-      if (data && typeof data.schedule === 'string') {
-        const s = data.schedule.trim();
-        if (s === '' || s === '-') {
-          statusMsg.textContent = 'Графік: відключень немає (усі години зі світлом)';
-          return parseHalfHourSchedule('');
-        }
-      }
-
-      // 1) Якщо є schedule з діапазонами з хвилинами (наприклад: "06:00-08:00, 10:00-11:30")
-      if (data?.schedule && typeof data.schedule === 'string') {
-        // Перевіряємо чи є хвилини в форматі (наявність ":")
-        if (data.schedule.includes(':')) {
-          statusMsg.textContent = 'Формат API: schedule з півгодинними періодами';
-          return parseHalfHourSchedule(data.schedule);
-        }
-        
-        // Старий формат без хвилин (для сумісності)
-        statusMsg.textContent = 'Формат API: schedule з діапазонами годин';
-        // За замовчуванням електрика є (true)
-        const hours = Array(24).fill(true);
-        
-        // Розбиваємо рядок по комах і обробляємо кожен діапазон
-        const ranges = data.schedule.split(',').map(s => s.trim()).filter(Boolean);
-        
-        for (const range of ranges) {
-          // Шукаємо формат "HH-HH" (наприклад "02-04")
-          const match = range.match(/^(\d{1,2})\s*[-–]\s*(\d{1,2})$/);
-          if (match) {
-            const start = parseInt(match[1], 10);
-            const end = parseInt(match[2], 10);
-            
-            // Перевіряємо валідність (дозволяємо значення до 24 для обробки "22-24" як "22, 23")
-            if (start >= 0 && start <= 24 && end >= 0 && end <= 24) {
-              // Позначаємо всі години в діапазоні як відключені (false)
-              // Діапазон: 02-04 означає години 2, 3 (не включаючи 4)
-              // Використовуємо h < end для правильного парсингу
-              for (let h = start; h < end && h < 24; h++) {
-                hours[h] = false;
-              }
-            }
-          }
-        }
-        
-        // Конвертуємо 24-годинний масив в 48 півгодинних (для сумісності)
-        const periods = [];
-        for (let h = 0; h < 24; h++) {
-          periods.push(hours[h], hours[h]); // Кожна година = 2 півгодини з однаковим станом
-        }
-        return periods;
-      }
+      if (data?.success === false) return Array(48).fill(null);
+      if (typeof data?.schedule === 'string') return parseHalfHourSchedule(data.schedule);
 
       // Допоміжна функція для конвертації 24-годинного масиву в 48 півгодинних
       const convert24To48 = (hours24) => {
@@ -341,7 +263,6 @@
         data?.hours, data?.by_hour, data?.states, data?.status, data?.power, data?.electricity
       ].find(a => Array.isArray(a) && a.length === 24);
       if (tryArrays) {
-        statusMsg.textContent = 'Формат API: 24-годинний масив';
         const hours24 = tryArrays.map(v => {
           // Поширені випадки: 1/0, true/false, "on"/"off", "power"/"blackout"
           if (typeof v === 'boolean') return v;
@@ -357,7 +278,6 @@
       // 3) Якщо є перелік годин відключення (індекси 0..23 або "HH")
       const offList = data?.off_hours || data?.outage_hours || data?.blackout_hours;
       if (Array.isArray(offList)) {
-        statusMsg.textContent = 'Формат API: список годин відключення';
         const hours24 = Array.from({ length: 24 }, (_, h) => {
           const set = new Set(offList.map(x => (typeof x === 'string' && x.includes(':')) ? parseInt(x.split(':')[0], 10) : parseInt(x, 10)));
           return set.has(h) ? false : true;
@@ -368,27 +288,13 @@
       // 4) Якщо інтервали
       const intervals = data?.intervals || data?.outages || data?.blackouts;
       if (Array.isArray(intervals) && intervals.length) {
-        statusMsg.textContent = 'Формат API: інтервали часу';
         const hours24 = hoursFromIntervals(intervals);
         return convert24To48(hours24);
       }
 
-      // 5) Якщо прийшов рядок "HH:MM-HH:MM; ..."
-      if (typeof data === 'string') {
-        statusMsg.textContent = 'Формат API: рядок інтервалів';
-        const parts = data.split(/[;,]+/).map(s => s.trim()).filter(Boolean);
-        const intervals = parts.map(p => {
-          const m = p.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
-          return m ? { start: m[1], end: m[2], off: true } : null;
-        }).filter(Boolean);
-        if (intervals.length) {
-          const hours24 = hoursFromIntervals(intervals);
-          return convert24To48(hours24);
-        }
-      }
+      if (typeof data === 'string') return parseHalfHourSchedule(data);
 
       // Невідомий формат
-      statusMsg.textContent = 'Невідомий формат відповіді API';
       return Array(48).fill(null);
     }
 
@@ -455,11 +361,11 @@
       const hoursOffEl = document.getElementById('hoursOffStat');
       
       if (hoursOnEl) {
-        hoursOnEl.textContent = formatHoursText(stats.onHours, stats.onMinutes);
+        hoursOnEl.textContent = periods.some(v => v === null) ? '—' : formatHoursText(stats.onHours, stats.onMinutes);
       }
       
       if (hoursOffEl) {
-        hoursOffEl.textContent = formatHoursText(stats.offHours, stats.offMinutes);
+        hoursOffEl.textContent = periods.some(v => v === null) ? '—' : formatHoursText(stats.offHours, stats.offMinutes);
       }
       
       // Оновлюємо виділення активної години після рендерингу
@@ -549,7 +455,7 @@
       if (!('Notification' in window)) return null;
       try {
         const permission = await Notification.requestPermission();
-        localStorage.setItem('notificationPermission', permission);
+        storageSet('notificationPermission', permission);
         updateNotificationStatus();
         return permission;
       } catch (e) {
@@ -567,7 +473,7 @@
       }
 
       const permission = Notification.permission;
-      localStorage.setItem('notificationPermission', permission);
+      storageSet('notificationPermission', permission);
 
       if (permission === 'granted') {
         notificationStatusText.textContent = 'Notifications: Enabled';
@@ -606,20 +512,24 @@
     }
 
     // Функція для завантаження даних всіх черг
+    let overviewRequest = 0;
+    function todayKyiv() {
+      return new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
+    }
+    function isCurrentData(data) {
+      return data && data.success === true && data.date === todayKyiv() && data.available !== false;
+    }
     async function loadAllQueues() {
+      const request = ++overviewRequest;
       try {
         const res = await fetchWithTimeout(apiUrl('api/blackout.php') + '?all=1', { cache: 'no-store' });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status} ${res.statusText}`);
-        }
+        if (!res.ok) throw new Error('API unavailable');
         const data = await res.json();
-        if (data.success && data.queues) {
-          renderOverviewTable(data.queues);
-        }
-      } catch (err) {
-        console.error('Помилка завантаження даних всіх черг:', err);
-        // При помилці показуємо порожню таблицю з невідомими значеннями
-        renderOverviewTable({});
+        if (request !== overviewRequest) return;
+        const usable = isCurrentData(data) && !data.stale && data.queues && typeof data.queues === 'object';
+        renderOverviewTable(usable ? data.queues : {});
+      } catch {
+        if (request === overviewRequest) renderOverviewTable({});
       }
     }
 
@@ -641,7 +551,8 @@
         const row = document.createElement('tr');
         
         // Додаємо заголовок з чергою
-        const queueCell = document.createElement('td');
+        const queueCell = document.createElement('th');
+        queueCell.scope = 'row';
         queueCell.className = 'cell-queue';
         queueCell.textContent = queue;
         row.appendChild(queueCell);
@@ -686,6 +597,10 @@
             cell.classList.add('state-unknown');
           }
           
+          const labels = { 'state-on': 'Є електрика', 'state-off': 'Відключено', 'state-mixed': 'Відключено перші 30 хв', 'state-mixed-reverse': 'Відключено останні 30 хв', 'state-unknown': 'Невідомо' };
+          const label = Object.keys(labels).find(key => cell.classList.contains(key));
+          cell.setAttribute('aria-label', `${queue}, ${String(hour).padStart(2, '0')}:00: ${labels[label]}`);
+          cell.title = cell.getAttribute('aria-label');
           row.appendChild(cell);
         }
         
@@ -696,178 +611,95 @@
       updateActiveHourInTable();
     }
 
-    async function load() {
-      errorMsg.style.display = 'none';
-      emergencyMsg.style.display = 'none';
-      // Не приховуємо apiErrorMsg тут, щоб зберегти повідомлення про застарілі дані під час завантаження
-      statusMsg.textContent = 'Завантаження…';
+    let loadRequest = 0;
+    let cachedEntry = null;
+    function cacheKey() { return `schedule:v2:${apiBase || window.location.origin}:${currentQueue}`; }
+    function restoreQueueCache() {
+      cachedEntry = null;
+      previousHours = null;
       try {
-        // Викликаємо API з таймаутом
+        const entry = JSON.parse(storageGet(cacheKey()));
+        if (entry && entry.queue === currentQueue && entry.date === todayKyiv() &&
+            Array.isArray(entry.periods) && entry.periods.length === 48 &&
+            entry.periods.every(v => v === true || v === false || v === null) &&
+            Number.isFinite(entry.updated) && entry.updated > 0 && entry.updated <= Date.now() / 1000) cachedEntry = entry;
+      } catch {}
+    }
+    function showEmergency(mode, stale = false) {
+      emergencyMsg.style.display = mode === true ? 'block' : 'none';
+      emergencyMsg.textContent = stale
+        ? '⚠️ Останні дані повідомляли про ГАВ. Поточний статус не підтверджено.'
+        : '⚠️ Діє графік аварійних відключень (ГАВ). Плановий графік не гарантує фактичний час відключень.';
+    }
+    function showCachedOrUnknown() {
+      if (cachedEntry && cachedEntry.date === todayKyiv()) {
+        render(cachedEntry.periods);
+        showEmergency(cachedEntry.emergency, true);
+        updatedMeta.textContent = `Графік на ${cachedEntry.date} · Перевірено: ${new Date(cachedEntry.updated * 1000).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })} (⚠️ застарілі)`;
+        statusMsg.textContent = 'Показано останні доступні дані для цієї черги';
+      } else {
+        cachedEntry = null;
+        render(Array(48).fill(null));
+        showEmergency(null);
+        updatedMeta.textContent = 'Актуальний графік відсутній';
+        statusMsg.textContent = 'Показано невідомі значення';
+      }
+    }
+    async function load() {
+      const request = ++loadRequest;
+      const queue = currentQueue;
+      errorMsg.style.display = 'none';
+      apiErrorMsg.style.display = 'none';
+      if (cachedEntry?.date !== todayKyiv()) cachedEntry = null;
+      showCachedOrUnknown();
+      statusMsg.textContent = 'Завантаження…';
+      loadAllQueues();
+      try {
         const res = await fetchWithTimeout(API_URL, { cache: 'no-store' });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status} ${res.statusText}`);
-        }
-        const text = await res.text();
-        
-        // Виводимо сиру відповідь в консоль
-        console.log('=== Відповідь від API (сирий текст) ===');
-        console.log(text);
-        console.log('=== Кінець сирої відповіді ===\n');
-        
-        let data;
-        try { 
-          data = JSON.parse(text);
-          console.log('=== Відповідь від API (розпарсений JSON) ===');
-          console.log(data);
-          console.log('=== Кінець JSON відповіді ===\n');
-          
-          // Перевіряємо чи є помилка в відповіді API
-          if (data.success === false && data.error) {
-            // Якщо є помилка в відповіді API, але є збережені дані - показуємо їх
-            if (lastSuccessfulData !== null) {
-              render(lastSuccessfulData);
-              const timeStr = lastSuccessfulTime ? lastSuccessfulTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
-              apiErrorMsg.style.display = 'none'; // Приховуємо повідомлення про помилку
-              updatedMeta.textContent = 'Останнє оновлення: ' + timeStr + ' (⚠️ застарілі)';
-              updatedMeta.style.color = '#dc2626';
-              statusMsg.textContent = 'Показано останні доступні дані';
-              return; // Виходимо, не оновлюючи дані
-            } else {
-              apiErrorMsg.textContent = data.error;
-              apiErrorMsg.style.display = 'block';
-            }
-          } else {
-            apiErrorMsg.style.display = 'none';
-            // Повертаємо нормальний колір для updatedMeta при успішному оновленні
-            updatedMeta.style.color = '';
-          }
-          
-          // Перевіряємо чи є активний графік аварійних відключень (ГАВ)
-          // Перевіряємо як boolean true, так і рядок "true" для сумісності
-          console.log('=== Перевірка emergency_mode ===');
-          console.log('emergency_mode:', data.emergency_mode);
-          console.log('Тип:', typeof data.emergency_mode);
-          if (data.emergency_mode === true || data.emergency_mode === 'true' || data.emergency_mode === 1) {
-            console.log('ГАВ активний - показуємо повідомлення');
-            emergencyMsg.textContent = '⚠️ Увага! Діє графік аварійних відключень (ГАВ). Нижче показано останній плановий графік для орієнтації, але реальний час відключень може відрізнятися.';
-            emergencyMsg.style.display = 'block';
-          } else {
-            console.log('ГАВ неактивний - приховуємо повідомлення');
-            emergencyMsg.style.display = 'none';
-          }
-          console.log('=== Кінець перевірки emergency_mode ===\n');
-        } catch (parseErr) { 
-          // Якщо не вдалося розпарсити JSON, але є збережені дані - показуємо їх
-          if (lastSuccessfulData !== null) {
-            render(lastSuccessfulData);
-            const timeStr = lastSuccessfulTime ? lastSuccessfulTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
-            apiErrorMsg.style.display = 'none'; // Приховуємо повідомлення про помилку
-            updatedMeta.textContent = 'Останнє оновлення: ' + timeStr + ' (⚠️ застарілі)';
-            updatedMeta.style.color = '#dc2626';
-            statusMsg.textContent = 'Показано останні доступні дані';
-            return; // Виходимо, не оновлюючи дані
-          }
-          data = text;
-          console.log('Відповідь не є JSON, використовується як текст');
-        }
-        
-        // Обробляємо дані
-        const periods = normalizeTo24(data);
-        console.log('=== Результат normalizeTo24 (48 півгодинних періодів) ===');
-        console.log(periods);
-        console.log('=== Кінець результату ===\n');
-        
-        // Перевіряємо чи змінився графік
-        if (hasScheduleChanged(previousHours, periods)) {
-          // Показуємо нотифікацію якщо графік змінився
-          showNotification('Power schedule updated');
-        }
-        
-        // Зберігаємо поточний графік як попередній
-        previousHours = periods;
-        
-        render(periods);
-        const ts = new Date();
-        updatedMeta.textContent = 'Останнє оновлення: ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        updatedMeta.style.color = '';
-        statusMsg.textContent = 'Готово';
-        
-        // Зберігаємо успішно завантажені дані
-        lastSuccessfulData = periods;
-        lastSuccessfulTime = ts;
-        
-        // Зберігаємо дані в localStorage для використання при перезавантаженні
-        try {
-          localStorage.setItem('lastSuccessfulData', JSON.stringify(periods));
-          localStorage.setItem('lastSuccessfulTime', ts.toISOString());
-        } catch (e) {
-          console.warn('Не вдалося зберегти дані в localStorage:', e);
-        }
-        
-        // Приховуємо повідомлення про застарілі дані, якщо воно було показано
-        apiErrorMsg.style.display = 'none';
-        
-        // Оновлюємо таблицю всіх черг
-        loadAllQueues();
-      } catch (err) {
-        console.error('Помилка завантаження даних:', err);
-        
-        const isNetworkError = err.name === 'TypeError' && (err.message === 'Failed to fetch' || err.message.includes('fetch'));
-        const isTimeout = err.name === 'AbortError';
-        const networkHint = (isNetworkError || isTimeout)
-          ? ' Можливі причини: таймаут, зміна сертифікатів/хостингу, недоступність сервера. Якщо API переїхав — відкрийте сторінку з параметром: ?api_base=https://нова-адреса'
-          : '';
-        
-        // Якщо є збережені дані - показуємо їх замість невідомих значень
-        if (lastSuccessfulData !== null) {
-          render(lastSuccessfulData);
-          
-          // Оновлюємо текст останнього оновлення з індикацією застарілості
-          const timeStr = lastSuccessfulTime ? lastSuccessfulTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
-          apiErrorMsg.style.display = 'none'; // Приховуємо повідомлення про помилку
-          updatedMeta.textContent = 'Останнє оновлення: ' + timeStr + ' (⚠️ застарілі)';
-          updatedMeta.style.color = '#dc2626';
-          
-          statusMsg.textContent = 'Показано останні доступні дані';
-          apiErrorMsg.textContent = 'Не вдалося підключитися до API.' + networkHint;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (request !== loadRequest || queue !== currentQueue) return;
+        if (data.success !== true || (data.queue && data.queue !== queue)) throw new Error('Некоректна відповідь API');
+        if (!isCurrentData(data)) {
+          cachedEntry = null;
+          storageSet(cacheKey(), 'null');
+          showCachedOrUnknown();
+          apiErrorMsg.textContent = data.date ? `Джерело надало графік на ${data.date}. Графік на сьогодні не підтверджено.` : 'Джерела не надали актуального графіка на сьогодні.';
           apiErrorMsg.style.display = 'block';
-        } else {
-          // Якщо немає збережених даних - показуємо помилку з підказкою
-          const userMessage = 'Не вдалося отримати дані з API. ' + (isNetworkError || isTimeout ? 'Перевірте доступність сервера та інтернет.' : err.message) + networkHint;
-          errorMsg.textContent = userMessage;
-          errorMsg.style.display = 'block';
-          statusMsg.textContent = 'Показано невідомі значення';
-          render(Array(48).fill(null));
+          return;
         }
-        
-        // Оновлюємо таблицю всіх черг навіть при помилці
-        loadAllQueues();
+        const sourceLink = document.getElementById('sourceLink');
+        if (sourceLink && ['https://kiroe.com.ua/electricity-blackout', 'https://t.me/s/SvitloKropyvnytskyiMisto'].includes(data.source)) {
+          sourceLink.href = data.source;
+          sourceLink.textContent = data.source;
+        }
+        const periods = normalizeTo24(data);
+        if (!periods.some(v => typeof v === 'boolean')) throw new Error('Графік для цієї черги відсутній або некоректний');
+        if (!Number.isFinite(data.updated) || data.updated <= 0 || data.updated > Date.now() / 1000 + 60) throw new Error('Час перевірки графіка невідомий');
+        const stale = data.stale === true || Date.now() / 1000 - data.updated >= 600;
+        if (hasScheduleChanged(previousHours, periods) && !stale) showNotification('Графік відключень оновлено');
+        previousHours = periods;
+        cachedEntry = { queue, date: data.date, periods, updated: data.updated, emergency: data.emergency_mode === true };
+        storageSet(cacheKey(), JSON.stringify(cachedEntry));
+        render(periods);
+        showEmergency(cachedEntry.emergency, stale);
+        updatedMeta.textContent = `Графік на ${data.date} · Перевірено: ${new Date(data.updated * 1000).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}${stale ? ' (⚠️ застарілі)' : ''}`;
+        statusMsg.textContent = stale ? 'Дані застаріли; перевірте офіційне джерело' : 'Готово';
+        apiErrorMsg.style.display = stale ? 'block' : 'none';
+        apiErrorMsg.textContent = 'Не вдалося підтвердити свіжість графіка. Показано останні доступні дані.';
+      } catch (err) {
+        if (request !== loadRequest || queue !== currentQueue) return;
+        showCachedOrUnknown();
+        apiErrorMsg.textContent = 'Не вдалося підключитися до API або отримати коректний графік. Спробуйте оновити пізніше.';
+        apiErrorMsg.style.display = 'block';
       }
     }
 
-    // Ініціалізація
     versionEl.textContent = VERSION;
     initialGrid();
-    updateActiveHour(); // Виділяємо поточну годину при завантаженні
-    
-    // Завантажуємо збережені дані з localStorage при ініціалізації
-    try {
-      const savedData = localStorage.getItem('lastSuccessfulData');
-      const savedTime = localStorage.getItem('lastSuccessfulTime');
-      if (savedData) {
-        lastSuccessfulData = JSON.parse(savedData);
-        if (savedTime) {
-          lastSuccessfulTime = new Date(savedTime);
-          // Відображаємо збережені дані одразу, якщо вони є
-          render(lastSuccessfulData);
-          const timeStr = lastSuccessfulTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          updatedMeta.textContent = 'Останнє оновлення: ' + timeStr + ' (завантажується...)';
-        }
-      }
-    } catch (e) {
-      console.warn('Не вдалося завантажити дані з localStorage:', e);
-    }
-    
+    updateActiveHour();
+    restoreQueueCache();
+
     // Застосовуємо поточну чергу до заголовка
     function applyQueue() {
       API_URL = apiUrl('api/blackout.php') + '?queue=' + currentQueue;
@@ -879,15 +711,11 @@
     // Оновлюємо статус нотифікацій при завантаженні
     updateNotificationStatus();
     
-    // Запитуємо дозвіл на нотифікації при завантаженні
-    if ('Notification' in window && Notification.permission === 'default') {
-      requestNotificationPermission();
-    }
+    // Permission is requested only after the user clicks the notification link.
     
     load();
     
-    // Завантажуємо дані для таблиці всіх черг
-    loadAllQueues();
+
 
     // Кнопка «Оновити»
     refreshBtn.addEventListener('click', load);
@@ -895,7 +723,8 @@
     // Зміна черги
     queueSelect.addEventListener('change', () => {
       currentQueue = queueSelect.value;
-      localStorage.setItem('queue', currentQueue);
+      storageSet('queue', currentQueue);
+      restoreQueueCache();
       applyQueue();
       load();
     });
@@ -907,13 +736,12 @@
     });
 
     // Автоматичне оновлення виділення активної години (перевіряємо кожну хвилину)
-    setInterval(updateActiveHour, 60 * 1000);
+    setInterval(() => { updateActiveHour(); updateActiveHourInTable(); if (cachedEntry && cachedEntry.date !== todayKyiv()) load(); }, 60 * 1000);
 
     // Автоматичне оновлення даних кожні 10 хвилин
     setInterval(load, 10 * 60 * 1000);
     
-    // Автоматичне оновлення таблиці всіх черг кожні 10 хвилин
-    setInterval(loadAllQueues, 10 * 60 * 1000);
+
   </script>
 </body>
 

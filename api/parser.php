@@ -21,13 +21,13 @@
  * @return array|false Масив з даними або false при помилці
  * Повертає: ['date' => 'DD.MM.YYYY', 'emergency_mode' => bool, 'queues' => [...]]
  */
-function parseScheduleMessage($text) {
+function parseScheduleMessage($text, $referenceTime = null) {
     if (empty($text)) {
         return false;
     }
     
     // Витягуємо дату
-    $date = extractDate($text);
+    $date = extractDate($text, $referenceTime);
     if (!$date) {
         return false; // Без дати не можемо визначити графік
     }
@@ -110,7 +110,7 @@ function extractDate($text, $referenceTime = null) {
     if (preg_match('/(?:на|від|з)\s+(\d{1,2})\.(\d{1,2})\.(\d{4})/ui', $text, $matches)) {
         $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
         $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
-        return $day . '.' . $month . '.' . $matches[3];
+        return checkdate((int)$month, (int)$day, (int)$matches[3]) ? $day . '.' . $month . '.' . $matches[3] : false;
     }
 
     // 2. Шукаємо "завтра"/"на завтра" — обчислюємо дату
@@ -127,7 +127,7 @@ function extractDate($text, $referenceTime = null) {
     if (preg_match('/(\d{1,2})\.(\d{1,2})\.(\d{4})/', $text, $matches)) {
         $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
         $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
-        return $day . '.' . $month . '.' . $matches[3];
+        return checkdate((int)$month, (int)$day, (int)$matches[3]) ? $day . '.' . $month . '.' . $matches[3] : false;
     }
     
     return false;
@@ -139,38 +139,20 @@ function extractDate($text, $referenceTime = null) {
  * @return array Асоціативний масив ['1.1' => 'schedule', ...]
  */
 function extractQueues($text) {
+    $text = str_replace(['–', '—', '−'], '-', $text);
     $queues = [];
-    
-    // Шукаємо всі рядки формату "Черга X.X: діапазони"
-    // Використовуємо негативний lookahead, щоб захопити текст до наступної "Черга X.X" або кінця рядка
-    $pattern = '/Черга\s+(\d+\.\d+)\s*:\s*((?:(?!Черга\s+\d+\.\d+).)+)/uis';
-    
-    if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
-        foreach ($matches as $match) {
-            $queueNum = $match[1];
-            $scheduleRaw = $match[2];
-            // Залишаємо лише символи, допустимі в графіку (цифри, пробіли, коми, дефіси, двокрапки),
-            // щоб не захоплювати рекламний текст після останньої черги (наприклад «22-24ПрАТ…»)
-            if (preg_match('/^[0-9\s,\-:]+/u', $scheduleRaw, $validMatch)) {
-                $scheduleRaw = trim($validMatch[0]);
-            }
-            // Нормалізуємо графік
-            $schedule = normalizeSchedule($scheduleRaw);
-            $scheduleTrimmed = trim($schedule);
-
-            // "Черга X.X: -" або порожній графік = немає відключень (усі години зі світлом)
-            if ($scheduleTrimmed === '' || $scheduleTrimmed === '-') {
-                $queues[$queueNum] = '';
-                continue;
-            }
-
-            // Валідуємо графік з діапазонами
-            if (validateSchedule($schedule)) {
-                $queues[$queueNum] = $schedule;
-            }
+    preg_match_all('/Черга\s+([1-6]\.[12])\s*:[ \t]*(.*?)(?=Черга\s+\d+\.\d+|$)/uis', $text, $matches, PREG_SET_ORDER);
+    foreach ($matches as $match) {
+        $raw = trim($match[2]);
+        if ($raw === '' || preg_match('/^-(?:\s|$)/u', $raw)) {
+            $queues[$match[1]] = '';
+            continue;
         }
+        // Extract the time prefix before a following advert, not arbitrary text containing digits.
+        if (!preg_match('/^[0-9\s,:;-]+/u', $raw, $prefix)) continue;
+        $schedule = normalizeSchedule(rtrim(trim($prefix[0]), ',;'));
+        if (validateSchedule($schedule)) $queues[$match[1]] = $schedule;
     }
-    
     return $queues;
 }
 
@@ -181,6 +163,7 @@ function extractQueues($text) {
  * @return string Нормалізований графік
  */
 function normalizeSchedule($schedule) {
+    $schedule = str_replace(['–', '—', '−', ';'], ['-', '-', '-', ','], $schedule);
     // Видаляємо зайві пробіли та переноси рядків
     $schedule = preg_replace('/[\s\n\r]+/', ' ', $schedule);
     $schedule = trim($schedule);
@@ -212,15 +195,27 @@ function normalizeSchedule($schedule) {
  * @return bool
  */
 function validateSchedule($schedule) {
-    if (empty($schedule)) {
-        return false;
+    if (!is_string($schedule) || trim($schedule) === '') return false;
+    foreach (explode(',', $schedule) as $range) {
+        if (!preg_match('/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/D', trim($range), $m)) return false;
+        [$sh, $sm, $eh, $em] = array_map('intval', array_slice($m, 1));
+        if ($sh > 23 || $sm > 59 || $eh > 24 || $em > 59 || ($eh === 24 && $em !== 0)) return false;
+        if ($sh * 60 + $sm === $eh * 60 + $em) return false;
     }
-    
-    // Перевіряємо чи містить хоча б один валідний діапазон часу
-    // Формат: HH:MM-HH:MM
-    $pattern = '/\d{2}:\d{2}-\d{2}:\d{2}/';
-    
-    return preg_match($pattern, $schedule) === 1;
+    return true;
+}
+
+/** Preserve line breaks separating queues and source notices. */
+function scheduleNodeText($node) {
+    $text = '';
+    foreach ($node->childNodes as $child) {
+        if ($child->nodeType === XML_TEXT_NODE) $text .= $child->nodeValue;
+        else {
+            $text .= scheduleNodeText($child);
+            if (in_array(strtolower($child->nodeName), ['br', 'p', 'div', 'li'], true)) $text .= "\n";
+        }
+    }
+    return $text;
 }
 
 /**
@@ -256,10 +251,8 @@ function parseHTMLSchedule($html, &$extractedText = null) {
     }
     
     // Отримуємо текстовий вміст
-    $text = $bodyDesc->textContent;
-    if ($extractedText !== null) {
-        $extractedText = $text;
-    }
+    $text = scheduleNodeText($bodyDesc);
+    $extractedText = $text;
     
     // Використовуємо основну функцію парсингу
     return parseScheduleMessage($text);

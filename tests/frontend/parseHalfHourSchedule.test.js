@@ -95,3 +95,15 @@ describe('parseHalfHourSchedule', () => {
     for (let i = 12; i < 16; i++) expect(result[i]).toBe(false);
   });
 });
+
+describe('audit regressions: unsafe schedules', () => {
+  const { loadFunctions } = require('./setup');
+  test.each(['99:99-88:88', '24:00-24:30', '02:00-04:00, junk', 'garbage', '12:00-12:00'])('rejects %s', schedule => {
+    expect(loadFunctions().parseHalfHourSchedule(schedule)).toEqual(Array(48).fill(null));
+  });
+  test('preserves overnight half hours', () => {
+    const periods = loadFunctions().parseHalfHourSchedule('23:30—01:00');
+    expect(periods.filter(x => x === false)).toHaveLength(3);
+    expect([periods[47], periods[0], periods[1], periods[2]]).toEqual([false, false, false, true]);
+  });
+});

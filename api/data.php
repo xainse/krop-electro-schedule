@@ -14,15 +14,15 @@
  */
 
 // Завантажуємо конфігурацію
-require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/bootstrap.php';
 
 /**
  * Конвертує дату DD.MM.YYYY → YYYY-MM-DD (для ключів/сортування)
  */
 function dateToKey($dateDMY) {
-    $parts = explode('.', $dateDMY);
-    if (count($parts) !== 3) return false;
-    return $parts[2] . '-' . $parts[1] . '-' . $parts[0];
+    if (!is_string($dateDMY) || !preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/D', $dateDMY, $m)
+        || !checkdate((int)$m[2], (int)$m[1], (int)$m[3])) return false;
+    return $m[3] . '-' . $m[2] . '-' . $m[1];
 }
 
 /**
@@ -48,7 +48,7 @@ function loadSchedulesFile() {
         return ['version' => 2, 'dates' => []];
     }
 
-    if (isset($raw['version']) && $raw['version'] === 2) {
+    if (isset($raw['version']) && $raw['version'] === 2 && isset($raw['dates']) && is_array($raw['dates'])) {
         return $raw;
     }
 
@@ -91,8 +91,10 @@ function writeSchedulesFile($data) {
         return false;
     }
 
-    $tempFile = SCHEDULES_FILE . '.tmp';
+    $tempFile = tempnam(CACHE_DIR, 'schedules-');
+    if ($tempFile === false) return false;
     if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
+        @unlink($tempFile);
         return false;
     }
     @chmod($tempFile, 0644);
@@ -117,7 +119,7 @@ function cleanPastSchedules(&$data) {
 }
 
 /**
- * Визначає "актуальну" дату: найближча дата >= сьогодні серед збережених
+ * Визначає "актуальну" дату: сьогоднішня дата серед збережених
  * @return string|null Ключ дати (YYYY-MM-DD) або null
  */
 function resolveCurrentDateKey($data) {
@@ -129,7 +131,7 @@ function resolveCurrentDateKey($data) {
     sort($keys);
 
     foreach ($keys as $k) {
-        if ($k >= $todayKey) {
+        if ($k === $todayKey) {
             return $k;
         }
     }
@@ -212,7 +214,7 @@ function saveSchedules($queues, $date, $emergencyMode, $source, $rawMessage = ''
 }
 
 /**
- * Перевіряє чи є актуальні графіки (>= сьогодні)
+ * Перевіряє чи є графіки на сьогодні
  * @return bool
  */
 function isDataEmpty() {
@@ -420,8 +422,10 @@ function saveTelegramMessage($messageData) {
     }
     
     // Atomic write через temp file
-    $tempFile = TELEGRAM_MESSAGES_FILE . '.tmp';
+    $tempFile = tempnam(CACHE_DIR, 'telegram-');
+    if ($tempFile === false) return false;
     if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
+        @unlink($tempFile);
         return false;
     }
     
@@ -520,8 +524,10 @@ function saveLastTelegramId($id) {
     }
     
     // Atomic write через temp file
-    $tempFile = TELEGRAM_MESSAGES_FILE . '.tmp';
+    $tempFile = tempnam(CACHE_DIR, 'telegram-');
+    if ($tempFile === false) return false;
     if (@file_put_contents($tempFile, $json, LOCK_EX) === false) {
+        @unlink($tempFile);
         return false;
     }
     

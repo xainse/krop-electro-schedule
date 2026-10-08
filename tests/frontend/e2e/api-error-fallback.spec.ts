@@ -1,69 +1,73 @@
 import { test, expect } from '@playwright/test';
+import { base, mockApi } from './fixtures';
 
-const PORT = 4173;
-const ROOT_URL = `http://127.0.0.1:${PORT}`;
+test('same queue same day fallback is marked stale and keeps emergency warning', async ({ page }) => {
+  await mockApi(page, { schedule: '00:00-24:00', emergency_mode: true });
+  await page.goto('/index.html');
+  await expect(page.locator('#statusMsg')).toHaveText('Готово');
+  await page.route('**/api/blackout.php**', route => route.fulfill({ status: 503, body: 'Unavailable' }));
+  await page.locator('#refreshBtn').click();
+  await expect(page.locator('#updatedMeta')).toContainText('застарілі');
+  await expect(page.locator('#apiErrorMsg')).toBeVisible();
+  await expect(page.locator('#emergencyMsg')).toContainText('не підтверджено');
+  await expect(page.locator('#grid .emoji', { hasText: '🌑' })).toHaveCount(24);
+  await page.locator('#queueSelect').selectOption('2.2');
+  await expect(page.locator('#updatedMeta')).toHaveText('Актуальний графік відсутній');
+  await expect(page.locator('#grid .emoji', { hasText: '🌑' })).toHaveCount(0);
+});
 
-const OFF_ALL_PERIODS = Array(48).fill(false);
+test('expired live payload cannot show all-day power or emergency as current', async ({ page }) => {
+  await mockApi(page, { date: '30.06.2026', schedule: '', emergency_mode: true });
+  await page.goto('/index.html');
+  await expect(page.locator('#apiErrorMsg')).toContainText('30.06.2026');
+  await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(0);
+  await expect(page.locator('#overviewTableBody td.state-unknown')).toHaveCount(288);
+  await expect(page.locator('#emergencyMsg')).toBeHidden();
+});
 
-async function mockAllQueuesOk(page: any) {
-  const queues: Record<string, string> = {};
-  const allQueues = ['1.1', '1.2', '2.1', '2.2', '3.1', '3.2', '4.1', '4.2', '5.1', '5.2', '6.1', '6.2'];
-  for (const q of allQueues) queues[q] = '-';
+test('late response from previous queue cannot overwrite selection', async ({ page }) => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let seen: () => void = () => {};
+  const started = new Promise<void>(resolve => { seen = resolve; });
+  await page.route('**/api/blackout.php**', async route => {
+    const queue = new URL(route.request().url()).searchParams.get('queue');
+    if (queue === '1.1') { seen(); await gate; }
+    await route.fulfill({ json: { ...base, queue, schedule: queue === '1.1' ? '00:00-24:00' : '', queues: {} } });
+  });
+  await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
+  await started;
+  await page.locator('#queueSelect').selectOption('2.2');
+  await expect(page.locator('#statusMsg')).toHaveText('Готово');
+  release();
+  await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(24);
+  await expect(page.locator('.title')).toContainText('2.2');
+});
 
-  await page.route('**/api/blackout.php**', async (route) => {
-    const reqUrl = new URL(route.request().url());
-    const all = reqUrl.searchParams.get('all');
-    const queue = reqUrl.searchParams.get('queue');
+test('blocked local storage does not stop loading', async ({ page }) => {
+  await page.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('Storage blocked'); } }); });
+  await mockApi(page);
+  await page.goto('/index.html');
+  await expect(page.locator('#statusMsg')).toHaveText('Готово');
+});
 
-    if (all === '1') {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, queues }),
-      });
-    }
-
-    if (queue) {
-      // Імітуємо помилку API для основного графіку
-      return route.fulfill({
-        status: 500,
-        contentType: 'text/plain',
-        body: 'Internal Server Error',
-      });
-    }
-
-    return route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not mocked' });
+// Keep runtime fixture timestamps out of test identifiers.
+for (const { name, payload } of [
+  { name: 'API error', payload: { success: false, error: 'failure' } },
+  { name: 'invalid time range', payload: { schedule: '99:99-88:88' } },
+]) {
+  test(`malformed payload: ${name} stays unknown`, async ({ page }) => {
+    await mockApi(page, payload);
+    await page.goto('/index.html');
+    await expect(page.locator('#apiErrorMsg')).toBeVisible();
+    await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(0);
   });
 }
 
-test('api error uses lastSuccessfulData fallback', async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as any).setInterval = () => 0;
-    (window as any).Notification = {
-      permission: 'denied',
-      requestPermission: async () => 'denied',
-    };
-  });
-
-  const lastSuccessfulTimeISO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  await page.addInitScript(
-    ({ periods, timeIso }) => {
-      localStorage.setItem('queue', '1.1');
-      localStorage.setItem('lastSuccessfulData', JSON.stringify(periods));
-      localStorage.setItem('lastSuccessfulTime', timeIso);
-    },
-    { periods: OFF_ALL_PERIODS, timeIso: lastSuccessfulTimeISO }
-  );
-
-  await mockAllQueuesOk(page);
-
-  await page.goto(`${ROOT_URL}/index.html`, { waitUntil: 'domcontentloaded' });
-
-  // statusMsg може перезаписуватись loadAllQueues(), тому перевіряємо стабільні маркери fallback.
-  await expect(page.locator('#updatedMeta')).toContainText('⚠️ застарілі');
-  await expect(page.locator('#apiErrorMsg')).toContainText('Не вдалося підключитися до API');
-
-  // Якщо lastSuccessfulData весь false => кожен годинний блок має відключено (🌑)
-  await expect(page.locator('#grid .cell .emoji', { hasText: '🌑' })).toHaveCount(24);
+test('mobile layout keeps page within viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockApi(page);
+  await page.goto('/index.html');
+  await expect(page.locator('#statusMsg')).toHaveText('Готово');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
-

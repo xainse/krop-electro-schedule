@@ -282,7 +282,7 @@ button:active {
   border: 1px solid var(--ring);
 }
 
-.overview-table td.cell-queue {
+.overview-table .cell-queue {
   background: var(--card-bg);
   color: var(--card-fg);
   font-size: 12px;
@@ -338,7 +338,7 @@ button:active {
     height: 20px;
   }
   
-  .overview-table td.cell-queue {
+  .overview-table .cell-queue {
     font-size: 11px;
     padding: 4px 6px;
     min-width: 35px;
@@ -353,3 +353,10 @@ button:active {
   margin-left: 4px;
 }
 
+
+.overview-table thead th { padding: 6px 3px; font-size: 11px; min-width: 32px; }
+.legend { flex-wrap: wrap; }
+@media (max-width: 480px) {
+  .donation-banner { height: auto; min-height: 100px; padding: 16px; }
+  .donation-banner a { flex-direction: column; text-align: center; }
+}

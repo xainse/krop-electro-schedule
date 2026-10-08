@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const PORT = 4173;
+const PORT = 8080;
 
 export default defineConfig({
   testDir: './e2e',
@@ -12,10 +12,10 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${PORT}`,
     // Використовуємо інстальований Chrome через channel.
     // Це стабільніше, ніж ручний executablePath + no-sandbox args.
-    channel: 'chrome',
+    channel: process.env.CI ? undefined : 'chrome',
     trace: 'on-first-retry',
   },
-  webServer: {
+  webServer: process.env.KROP_E2E_EXTERNAL_SERVER ? undefined : {
     command: `php -S 127.0.0.1:${PORT} -t ../..`,
     url: `http://127.0.0.1:${PORT}/index.html`,
     reuseExistingServer: !process.env.CI,

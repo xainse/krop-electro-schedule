@@ -9,7 +9,7 @@
  */
 
 // Завантажуємо модулі
-require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/parser.php';
 require_once __DIR__ . '/data.php';
 
@@ -36,7 +36,7 @@ function fetchFromSite() {
     }
     
     // ГАВ визначаємо тією ж логікою, що й для Telegram (parser.php)
-    $parsed['emergency_mode'] = (detectEmergencyMode($html) === true);
+    $parsed['emergency_mode'] = detectEmergencyMode($extractedText ?? '');
     return $parsed;
 }
 
@@ -53,10 +53,10 @@ function fetchUrl($url) {
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 4);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
             curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
             curl_setopt($ch, CURLOPT_ENCODING, '');
             
@@ -77,18 +77,23 @@ function fetchUrl($url) {
                     'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 ],
-                'timeout' => 15,
+                'timeout' => 2,
                 'follow_location' => 1,
-                'ignore_errors' => true
+                'ignore_errors' => false
             ],
             'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false
+                'verify_peer' => true,
+                'verify_peer_name' => true
             ]
         ]);
         
         $html = @file_get_contents($url, false, $context);
-        if ($html !== false && strlen($html) > 0) {
+        $headers = function_exists('http_get_last_response_headers') ? http_get_last_response_headers() : ($http_response_header ?? []);
+        $status = null;
+        foreach ($headers ?? [] as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $m)) $status = (int)$m[1];
+        }
+        if ($html !== false && $status === 200 && strlen($html) > 0) {
             return $html;
         }
     }

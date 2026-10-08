@@ -66,24 +66,10 @@ vendor/bin/phpunit # Запустити всі тести
 
 ## Покриття
 
-### Frontend (66 тестів)
+Jest перевіряє чисті функції та весь inline-застосунок у jsdom, включно з простроченим live payload, гонкою запитів, ізоляцією кешу й відмовою storage.
 
-| Функція | Тестів | Що перевіряється |
-|---------|--------|------------------|
-| `parseHalfHourSchedule` | 11 | Парсинг графіків, edge cases, різні формати |
-| `normalizeTo24` | 9 | Усі формати API відповідей |
-| `hoursFromIntervals` | 9 | Інтервали, перетікання через північ |
-| `calculateDailyStats` | 7 | Підрахунок годин, півгодини, null |
-| `formatHoursText` | 6 | Форматування часу |
-| `hasScheduleChanged` | 6 | Виявлення змін |
-| `initialGrid` | 6 | Створення DOM елементів |
-| `render` | 8 | Рендеринг станів, статистика, CSS класи |
+PHPUnit перевіряє парсер, джерела, дати, актуальність відповіді та валідацію HTTP-запитів. Тестовий runtime ізольований від локального `api/config.php` і production кешу.
 
-### Backend (70 тестів)
+Playwright використовує детерміновані fixtures та перевіряє UI на desktop/mobile. Немає обов'язкових звернень до живого API. Для окремо запущеного сервера 8080 використовуйте `KROP_E2E_EXTERNAL_SERVER=1 npm run test:e2e`.
 
-| Клас тесту | Тестів | Що перевіряється |
-|------------|--------|------------------|
-| `ParserTest` | 19 | parseScheduleMessage, extractDate, extractQueues, normalizeSchedule |
-| `ValidationTest` | 11 | validateSchedule, extractDate edge cases, normalizeSchedule edge cases |
-| `ParseAllQueuesTest` | 8 | parseAllQueues з різними форматами |
-| `EmergencyModeTest` | 23 | detectEmergencyMode (ГАВ/СГАВ), checkEmergencyMode |
+CI: `.github/workflows/tests.yml`. Кількість тестів визначається поточним результатом запуску; ручний аудит і обмеження середовища задокументовано в `docs/AUDIT-2026-10-08.md`.

@@ -6,13 +6,14 @@
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-// Load config (required for site_fetcher)
-$configPath = __DIR__ . '/../../api/config.php';
-if (!file_exists($configPath)) {
-    require_once __DIR__ . '/../../api/config.example.php';
-} else {
-    require_once $configPath;
-}
+// Test runtime is isolated from production data and private overrides.
+define('KROP_TEST_MODE', true);
+$testRuntime = sys_get_temp_dir() . '/krop-tests-' . getmypid();
+@mkdir($testRuntime, 0700, true);
+define('CACHE_DIR', $testRuntime);
+define('LOGS_DIR', $testRuntime . '/logs');
+define('ENABLE_LOGGING', false);
+require_once __DIR__ . '/../../api/bootstrap.php';
 
 // Load parser.php
 require_once __DIR__ . '/../../api/parser.php';

@@ -15,7 +15,7 @@
  */
 
 // Завантажуємо модулі
-require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/data.php';
 require_once __DIR__ . '/parser.php';
 
@@ -54,38 +54,14 @@ function fetchFromTelegram($limit = 10) {
         return false;
     }
     
-    // Парсимо HTML та отримуємо повідомлення (лише нові, якщо lastKnownId задано)
-    $messages = parseTelegramHTML($html, $lastKnownId);
-    
-    // Якщо нових немає — один раз перепарсити останні повідомлення (актуалізувати schedules.json після деплою)
-    if (($messages === false || empty($messages)) && $lastKnownId !== null) {
-        $messages = parseTelegramHTML($html, null);
-        if ($messages !== false && !empty($messages)) {
-            $messages = array_slice($messages, 0, max($limit, 20));
-        }
-    }
-    
-    if ($messages === false || empty($messages)) {
-        error_log("Telegram fetcher: Не вдалося розпарсити HTML або немає нових повідомлень");
-        return false;
-    }
-    
-    // Обмежуємо кількість: при першому запуску — limit, після retry (багато повідомлень) — до 20
-    $maxMessages = (count($messages) > $limit && $lastKnownId !== null) ? 20 : $limit;
-    if (count($messages) > $maxMessages) {
-        $messages = array_slice($messages, 0, $maxMessages);
-    }
-    
-    $count = count($messages);
-    
-    if ($count === 0) {
-        error_log("Telegram fetcher: Немає нових повідомлень");
-        return false;
-    }
-    
+    // Re-read the visible window: older messages can be edited even when new posts exist.
+    $messages = parseTelegramHTML($html, null);
+    if (!$messages) return false;
+    $messages = array_slice($messages, 0, max($limit, 20));
+
     // Збираємо графіки по кожній унікальній даті та визначаємо ГАВ/СГАВ
     $scheduleEntries = []; // масив ['parsed' => ..., 'message_num' => ...] для злиття
-    $emergencyModeDetected = false;
+    $emergencyModeDetected = null;
     $emergencyModeTime = 0;
     $maxMessageId = $lastKnownId ?? 0;
     
@@ -97,12 +73,12 @@ function fetchFromTelegram($limit = 10) {
         $itemEmergencyMode = detectEmergencyMode($messageData['text']);
         $itemTime = strtotime($messageData['datetime']);
         
-        if ($itemEmergencyMode !== null && $itemTime > $emergencyModeTime) {
+        if ($itemEmergencyMode !== null && $itemTime > $emergencyModeTime && date('Y-m-d', $itemTime) === date('Y-m-d')) {
             $emergencyModeDetected = $itemEmergencyMode;
             $emergencyModeTime = $itemTime;
         }
         
-        $parsed = parseScheduleMessage($messageData['text']);
+        $parsed = parseScheduleMessage($messageData['text'], $itemTime ?: time());
         
         if (function_exists('logSourceContent')) {
             logSourceContent('telegram', $messageData['text'], [
@@ -137,7 +113,7 @@ function fetchFromTelegram($limit = 10) {
     $lastSaved = null;
     foreach ($schedulesByDate as $entry) {
         $parsed = $entry['parsed'];
-        $em = $parsed['emergency_mode'];
+        $em = null;
         if ($emergencyModeTime > 0) {
             $em = $emergencyModeDetected;
         }
@@ -169,11 +145,11 @@ function fetchFromTelegram($limit = 10) {
     }
     sort($sortedKeys);
     foreach ($sortedKeys as $key) {
-        if ($key >= $todayKey) {
+        if ($key === $todayKey) {
             $dateDMY = keyToDate($key);
             if ($dateDMY !== false && isset($schedulesByDate[$dateDMY])) {
                 $parsed = $schedulesByDate[$dateDMY]['parsed'];
-                $em = $parsed['emergency_mode'];
+                $em = null;
                 if ($emergencyModeTime > 0) {
                     $em = $emergencyModeDetected;
                 }
@@ -185,32 +161,8 @@ function fetchFromTelegram($limit = 10) {
             }
         }
     }
-    // Немає дати >= сьогодні — повертаємо останнє збережене (найпізніший графік з кешу)
-    if ($lastSaved) {
-        return $lastSaved;
-    }
-    
-    // Якщо графіку немає, але є зміна статусу ГАВ/СГАВ — оновлюємо поточний
-    if (empty($schedulesByDate) && $emergencyModeTime > 0) {
-        $currentData = getSchedules();
-        if ($currentData && !empty($currentData['queues'])) {
-            $saved = saveSchedules(
-                $currentData['queues'],
-                $currentData['date'],
-                $emergencyModeDetected,
-                SOURCE_TELEGRAM,
-                ''
-            );
-            if ($saved) {
-                return [
-                    'date' => $currentData['date'],
-                    'emergency_mode' => $emergencyModeDetected,
-                    'queues' => $currentData['queues']
-                ];
-            }
-        }
-    }
-    
+    // No current schedule observed upstream: do not re-stamp stored or past data as fresh.
+
     return false;
 }
 
@@ -227,10 +179,10 @@ function fetchTelegramHTML($url) {
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 4);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
             curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -264,18 +216,23 @@ function fetchTelegramHTML($url) {
                     'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                     'Accept-Language: uk-UA,uk;q=0.9,en;q=0.8'
                 ],
-                'timeout' => 15,
+                'timeout' => 2,
                 'follow_location' => 1,
-                'ignore_errors' => true
+                'ignore_errors' => false
             ],
             'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false
+                'verify_peer' => true,
+                'verify_peer_name' => true
             ]
         ]);
         
         $content = @file_get_contents($url, false, $context);
-        if ($content !== false && strlen($content) > 0) {
+        $headers = function_exists('http_get_last_response_headers') ? http_get_last_response_headers() : ($http_response_header ?? []);
+        $status = null;
+        foreach ($headers ?? [] as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $m)) $status = (int)$m[1];
+        }
+        if ($content !== false && $status === 200 && strlen($content) > 0) {
             return $content;
         } else {
             error_log("Telegram fetcher: file_get_contents failed");
@@ -367,7 +324,7 @@ function extractMessageData($messageNode, $xpath) {
     
     if ($textNodes->length > 0) {
         $textNode = $textNodes->item(0);
-        $text = trim($textNode->textContent);
+        $text = trim(scheduleNodeText($textNode));
     }
     
     // Якщо текст порожній, пропускаємо
