@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [4.7] - 2026-10-08
+
+### Додано
+- Регресійна перевірка сумісності YAML-конфігурації coverage після оновлення js-yaml (#24).
+- GitHub Pages deploy job, що залежить від успішних тестів та обох dependency audits (#26).
+
+### Виправлено
+- Міграція Jest / jest-environment-jsdom на 30.5.2 видалила вразливий ланцюжок braces; scoped override js-yaml 4 видалив sprintf-js. Online npm audit: 0 vulnerabilities (#24).
+
+### Змінено
+- Видалено застарілі широкі npm overrides; залишено один scoped override для @istanbuljs/load-nyc-config.
+- До Pages artifact потрапляють тільки index.html, styles.css, favicon.svg і preview.png.
+
 ## [4.6] - 2026-10-08
 
 ### Додано

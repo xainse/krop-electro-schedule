@@ -2,18 +2,18 @@
 
 Репозиторій: https://github.com/xainse/krop-electro-schedule
 
-Цей документ описує пакет виправлень v4.6. Проходження тестів не є підтвердженням деплою або успішного production audit.
+Цей документ описує пакет виправлень v4.7. Проходження тестів не є підтвердженням деплою або успішного production audit.
 
 | Issue | Зміни | Що залишається |
 |---|---|---|
 | [#19](https://github.com/xainse/krop-electro-schedule/issues/19) | FTPS, перевірка сертифіката, TLS ≥1.2, PROT P, жодного plaintext fallback; коміт `ebe1d42` | Перевірити FTPS хостингу та змінити раніше використаний FTP-пароль через панель |
-| [#20](https://github.com/xainse/krop-electro-schedule/issues/20) | Production API зафіксовано на `https://xain.in.ua`; debug допускається лише на тому самому loopback origin | Деплой |
+| [#20](https://github.com/xainse/krop-electro-schedule/issues/20) | Production API зафіксовано на `https://xain.in.ua`; debug допускається лише на тому самому loopback origin | Виконано, frontend v4.6 перевірено на живому сайті |
 | [#21](https://github.com/xainse/krop-electro-schedule/issues/21) | Відсутність графіка вимагає явного датованого повідомлення; збій парсера зберігає невизначеність; legacy-маркери кешу відкидаються | Перевірка джерел після деплою |
 | [#22](https://github.com/xainse/krop-electro-schedule/issues/22) | Ліміт запитів, bounded logs, вилучення IP/User-Agent з логів | Налаштування лімітів вебсервера та перевірка production UID/проксі |
 | [#23](https://github.com/xainse/krop-electro-schedule/issues/23) | HTTPS allowlist, перевірка й фіксація public IPv4, обмежені redirects/body/час | Перевірка cURL, DNS і доступності джерел на сервері |
-| [#24](https://github.com/xainse/krop-electro-schedule/issues/24) | Оновлено 9 транзитивних npm-залежностей | Дві невиправлені upstream advisories; npm повідомляє 34 вразливі пакети з урахуванням транзитивних шляхів |
+| [#24](https://github.com/xainse/krop-electro-schedule/issues/24) | Jest / jest-environment-jsdom 30.5.2, scoped js-yaml 4 для coverage loader; online audit: 0 | Перевірка нового lockfile у CI |
 | [#25](https://github.com/xainse/krop-electro-schedule/issues/25) | CSP hashes для inline JS, дозволені origins, заголовки PHP API | Деплой і заголовки самого frontend-хостингу |
-| [#26](https://github.com/xainse/krop-electro-schedule/issues/26) | Actions pinned SHA, npm/Composer audits, Dependabot, targeted secret guard, CSP check | Увімкнути required checks і публікацію лише після CI у налаштуваннях репозиторію/Pages |
+| [#26](https://github.com/xainse/krop-electro-schedule/issues/26) | Actions pinned SHA, npm/Composer audits, Dependabot, targeted secret guard, CSP check; Pages source = GitHub Actions | Перший deploy через job, що потребує verify та dependencies; branch protection окремо |
 | [#27](https://github.com/xainse/krop-electro-schedule/issues/27) | Локальні secrets `0600`, runtime `0700`, приватні нові файли, підтримка зовнішнього runtime/config | Перенесення і права на production-хостингу |
 | [#28](https://github.com/xainse/krop-electro-schedule/issues/28) | Відтворюваний скрипт HTTP smoke | Запуск із доступної мережі та перевірки панелі хостингу |
 
@@ -28,7 +28,11 @@
 
 ## Залежності
 
-Реальний online audit під час `npm install --ignore-scripts` після оновлення: **34 (29 high, 5 moderate)**. Причини: [braces GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) і [sprintf-js GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c). Перевірені registry-релізи 3.0.3 і 1.1.3 відповідно залишаються вразливими. Залежності використовуються тестами, не включаються в production PHP/статичний frontend. CI audit навмисно не приховує цей результат і наразі буде червоним; потрібні upstream patches або перевірена міграція тестового стеку. Offline audit не приймається як доказ відсутності вразливостей.
+Початковий пакет v4.6 залишав 34 npm-попередження від [braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) та [sprintf-js](https://github.com/advisories/GHSA-hp3w-g68c-fv3c). CI вказав на міграцію Jest як спосіб прибрати вразливий ланцюжок, навіть без виправлених релізів цих двох бібліотек.
+
+У v4.7 Jest і jest-environment-jsdom оновлено до 30.5.2, старі широкі overrides видалено. Для `@istanbuljs/load-nyc-config` залишено scoped override `js-yaml ^4.1.1` (lockfile 4.3.2), що прибирає argparse 1 / sprintf-js. Loader використовує сумісний `load`; окремий regression перевіряє include/exclude та boolean config. [Офіційний migration guide Jest](https://jestjs.io/docs/upgrading-to-jest30) враховано; наявні assertions збережено.
+
+Online audit під час npm install: **0 vulnerabilities**, 323 packages. Offline audit не приймається як доказ. Composer audit у CI v4.6 теж пройшов. Audits залишаються обов'язковими, без виключень для dev-залежностей.
 
 ## Production перевірка та міграція
 
@@ -38,15 +42,15 @@
 4. Залишити старий кеш як backup до перевірки. В новому runtime почати з порожнього кешу, щоб не копіювати активні lock-файли. Зовнішній runtime не обслуговується командою FTPS clear-cache/pull-logs: вона працює з legacy `api/cache` і `api/logs`.
 5. Після проходження всіх тестів виконати FTPS dry-run/deploy за skill. API entrypoint публікується після модулів. Загальний багатофайловий реліз не є атомарним; потрібне коротке контрольоване вікно змін або release-directory switch хостингу.
 6. Запустити `python3 scripts/security-smoke.py`: статуси 400/405/204, CORS без credentials, JSON freshness, HTTP→HTTPS, CSP, закриті private URL перевіряються без завантаження їх тіл. Публічні запити не змінюють дані користувачів, але можуть спричинити звичайне оновлення кешу API. Це не навантажувальний тест і не заміна server-side audit.
-7. У GitHub зробити `Tests / verify` та `Tests / dependencies` required checks; заборонити обхід для релізів. Pages, що публікує прямо з branch, не чекає цих checks: потрібен workflow deploy з `needs` або окрема release branch, що оновлюється лише після checks. Поточні налаштування не змінені та не підтверджені.
+7. GitHub Pages Source змінено з branch на **GitHub Actions** (збереження підтверджено UI). Job `publish` потребує успіху `verify` та `dependencies`, працює лише для main push/manual run, має окремі мінімальні Pages/OIDC permissions. У deployment artifact тільки чотири public frontend files. PR/schedule jobs не публікують сайт і не отримують deployment permissions. Ruleset/branch protection — додатковий рівень захисту зміни workflow, що перевіряється окремо.
 
 ## Перевірки локального пакета
 
-- Jest: 90 tests PASS.
+- Jest: 91 tests PASS (включно з YAML compatibility regression).
 - PHPUnit: 95 tests / 269 assertions PASS.
 - Deployment unittest: 13 PASS.
 - CSP hash check, targeted secret guard, git diff whitespace check: PASS.
 - Playwright: **14 passed (8.1s)** — результат запуску користувачем у локальному терміналі, підтверджений у чаті. Попередній запуск усередині agent sandbox був заблокований до assertions (SIGABRT/EPERM).
 - Production smoke / FTPS status: мережеві обмеження цього середовища, результат не підтверджено.
 
-Вимогу успішного E2E для коміту виконано. FTPS status повторно зупинився на DNS resolution до login; серверні файли не змінено. Production acceptance залишається окремим незавершеним кроком.
+Вимогу успішного E2E для frontend-змін v4.6 виконано також незалежним GitHub CI verify. v4.7 змінює тестові залежності, deployment workflow та VERSION/CSP hashes, без зміни поведінки застосунку; E2E повторно виконується у CI перед публікацією. FTPS status повторно зупинився на DNS resolution до login; серверні файли не змінено. Production acceptance залишається окремим незавершеним кроком.

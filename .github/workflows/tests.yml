@@ -54,7 +54,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: none
-      - name: Audit npm including test dependencies (issue 24 remains open)
+      - name: Audit npm including test dependencies
         id: npm-audit
         run: npm audit --audit-level=moderate
         working-directory: tests/frontend
@@ -62,3 +62,32 @@ jobs:
         if: ${{ !cancelled() }}
         run: composer audit --locked --no-interaction
         working-directory: tests/backend
+  publish:
+    needs: [verify, dependencies]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Stage public frontend files only
+        run: |
+          mkdir -p "$RUNNER_TEMP/krop-pages"
+          cp index.html styles.css favicon.svg preview.png "$RUNNER_TEMP/krop-pages/"
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0; nested upload-artifact also SHA-pinned
+        with:
+          path: ${{ runner.temp }}/krop-pages
+      - name: Deploy verified frontend
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
