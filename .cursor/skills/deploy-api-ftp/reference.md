@@ -52,5 +52,5 @@ Local/newer code may also write `api_YYYY-MM-DD.log`. `pull-logs` matches by dat
 ## Rollback
 
 1. Find latest folder in `.deploy-backup/`.
-2. Manually STOR needed files back via FTP, or restore from that backup directory with a one-off script.
+2. Restore needed code files through verified temporary uploads and FTP rename, dependencies before the entrypoint. Do not truncate live PHP with direct STOR. A multi-file release is not transactional; inspect status after a failed deployment.
 3. Do **not** restore stale cache as “verified” data after a format change — clear cache instead.

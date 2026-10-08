@@ -48,7 +48,7 @@ python3 .cursor/skills/deploy-api-ftp/scripts/ftp_sync.py <command>
 3. Для деплою спочатку `--dry-run`, потім реальний `deploy`.
 4. За замовчуванням **не** чистити кеш; додай `--clear-cache` лише якщо користувач просить або після breaking-зміни формату кешу.
 5. Після деплою — smoke:
-   - `https://xain.in.ua/api/blackout.php?queue=1.1` → JSON 200
+   - `https://xain.in.ua/api/blackout.php?queue=1.1` → JSON 200 або контрольований JSON 503 з `available: false`, якщо актуального графіка немає
    - `.../api/parser.php`, `.../api/config.php`, `.../api/cache/blackout_cache.json` → 403/404
 6. Для аналізу: `pull-logs --days 2` (або більше за запитом).
 
@@ -61,17 +61,21 @@ python3 .cursor/skills/deploy-api-ftp/scripts/ftp_sync.py <command>
 `config.php`, вміст `cache/` (крім явного clear), історичні `logs/*.log`
 
 **Видаляти з production якщо є:**
-`blackout_new.php`, `test-cors.php`, `test_emergency_mode.php`, `config.example.php`, будь-який інший файл у `api/`, якого немає в allowlist і який не `config.php`/`cache`/`logs`
+`blackout_new.php`, `test-cors.php`, `test_emergency_mode.php`, `config.example.php`; невідомі файли лише показувати, не видаляти
 
-**Перед змінами:** скрипт робить backup у `.deploy-backup/<timestamp>/`.
+**Перед змінами:** скрипт робить приватний backup змінюваних файлів у `.deploy-backup/<timestamp>/`; `config.php` не копіює.
 
-**Після деплою:** гарантує `cache/.htaccess` і `logs/.htaccess`.
+**Публікація:** усі PHP-файли спочатку завантажуються у `.tmp` і перевіряються читанням назад. Далі FTP rename замінює кожен файл; `blackout.php` — останнім. Це атомарність окремого файла, не всього релізу: зміни залежностей повинні бути сумісними зі старим endpoint. При відмові rename або перевірки зупинитися, звірити `status` і backup; не переходити на прямий STOR робочих файлів.
+
+**Після деплою:** гарантує повну заборону HTTP доступу в `cache/.htaccess` і `logs/.htaccess`. Зміни цих файлів також включені в dry-run і backup.
+
+**Перевірка скрипта:** `python3 -m unittest discover -s tests/deploy -v` (без мережі та credentials).
 
 ## Cache clear
 
 Видаляє лише data-файли в `cache/`:
-`blackout_cache.json`, `schedules.json`, `telegram_messages.json`, `last_source_check.txt`, `refresh.lock`  
-Не чіпає `.htaccess`.
+`blackout_cache.json`, `schedules.json`, `telegram_messages.json`, `last_source_check.txt`
+Не чіпає `.htaccess` і `refresh.lock`: видалення lock під час refresh дозволяє паралельні оновлення на різних inode.
 
 ## Safety
 

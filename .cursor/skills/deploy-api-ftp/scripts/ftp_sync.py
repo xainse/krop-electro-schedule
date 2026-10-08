@@ -6,7 +6,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
-import os
+import posixpath
+import uuid
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -22,13 +23,13 @@ LOCAL_LOGS = LOCAL_API / "logs"
 # Production PHP/modules + root .htaccess (never include config.php).
 DEPLOY_FILES = (
     ".htaccess",
-    "blackout.php",
     "bootstrap.php",
     "response.php",
     "parser.php",
     "data.php",
     "site_fetcher.php",
     "telegram_fetcher.php",
+    "blackout.php",  # Publish the entrypoint after its dependencies.
 )
 
 # Keep on server even if absent locally / not in DEPLOY_FILES.
@@ -53,14 +54,9 @@ CACHE_CLEAR_FILES = {
     "schedules.json",
     "telegram_messages.json",
     "last_source_check.txt",
-    "refresh.lock",
 }
 
-CACHE_HTACCESS = """# Заборона прямого доступу до JSON файлів
-<FilesMatch "\\.(json|tmp)$">
-    Require all denied
-</FilesMatch>
-"""
+CACHE_HTACCESS = "Require all denied\n"
 
 LOGS_HTACCESS = "Require all denied\n"
 
@@ -74,7 +70,10 @@ def load_env(path: Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        out[key.strip()] = value.strip().strip('"').strip("'")
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("\"", "'"):
+            value = value[1:-1]
+        out[key.strip()] = value
     required = ("ftp_host", "ftp_login", "ftp_pass", "ftp_dir")
     missing = [k for k in required if not out.get(k)]
     if missing:
@@ -87,6 +86,8 @@ def md5_bytes(data: bytes) -> str:
 
 
 def connect(env: dict[str, str]) -> ftplib.FTP:
+    if env["ftp_dir"].rstrip("/") != "/www.xain.in.ua/api":
+        raise ValueError("Refusing to sync outside /www.xain.in.ua/api")
     ftp = ftplib.FTP()
     ftp.connect(env["ftp_host"], 21, timeout=60)
     ftp.login(env["ftp_login"], env["ftp_pass"])
@@ -95,8 +96,21 @@ def connect(env: dict[str, str]) -> ftplib.FTP:
 
 
 def nlst(ftp: ftplib.FTP) -> set[str]:
-    names = set(ftp.nlst())
-    return {n for n in names if n not in (".", "..")}
+    names = set()
+    current = ftp.pwd().rstrip("/")
+    for entry in ftp.nlst():
+        if entry in (".", ".."):
+            continue
+        if any(c in entry for c in ("\r", "\n", "\\", "\0")):
+            raise ValueError("Unsafe FTP directory entry")
+        if "/" in entry:
+            if posixpath.dirname(entry) not in (".", current):
+                raise ValueError("FTP listing contains an unexpected directory")
+            entry = posixpath.basename(entry)
+        if entry in ("", ".", ".."):
+            raise ValueError("Unsafe FTP directory entry")
+        names.add(entry)
+    return names
 
 
 def retr(ftp: ftplib.FTP, name: str) -> bytes:
@@ -107,6 +121,29 @@ def retr(ftp: ftplib.FTP, name: str) -> bytes:
 
 def stor(ftp: ftplib.FTP, name: str, data: bytes) -> None:
     ftp.storbinary(f"STOR {name}", io.BytesIO(data))
+
+
+def stage_upload(ftp: ftplib.FTP, name: str, data: bytes) -> str:
+    # .tmp is denied by production .htaccess. Never truncate the live PHP file.
+    staged = f".deploy-{uuid.uuid4().hex}.tmp"
+    try:
+        stor(ftp, staged, data)
+        if retr(ftp, staged) != data:
+            raise OSError(f"Upload verification failed: {name}")
+    except Exception:
+        try:
+            ftp.delete(staged)
+        except ftplib.all_errors:
+            pass
+        raise
+    return staged
+
+
+def publish(ftp: ftplib.FTP, staged: str, name: str, data: bytes) -> None:
+    # If overwrite-rename is unsupported, stop; never fall back to delete + STOR.
+    ftp.rename(staged, name)
+    if retr(ftp, name) != data:
+        raise OSError(f"Published file verification failed: {name}")
 
 
 def ensure_dir(ftp: ftplib.FTP, remote_dir: str, api_dir: str) -> None:
@@ -122,10 +159,12 @@ def cmd_status(ftp: ftplib.FTP, env: dict[str, str]) -> int:
     print(f"Local:  {LOCAL_API}")
     print()
     print(f"{'STATUS':14} {'FILE':28} LOCAL  REMOTE")
+    missing = False
     for name in DEPLOY_FILES:
         local_path = LOCAL_API / name
         if not local_path.is_file():
             print(f"{'MISSING_LOCAL':14} {name:28}")
+            missing = True
             continue
         local = local_path.read_bytes()
         if name not in remote:
@@ -139,24 +178,27 @@ def cmd_status(ftp: ftplib.FTP, env: dict[str, str]) -> int:
 
     junk = sorted((remote - PRESERVE_REMOTE) - set(DEPLOY_FILES))
     if junk:
-        print("\nRemote extras (candidates to delete):")
+        print("\nRemote extras (only OBSOLETE will be deleted):")
         for name in junk:
-            mark = "OBSOLETE" if name in OBSOLETE_REMOTE else "EXTRA"
+            mark = "OBSOLETE" if name in OBSOLETE_REMOTE else "PRESERVED"
             print(f"  [{mark}] {name}")
-    return 0
+    return 1 if missing else 0
 
 
 def backup_remote(ftp: ftplib.FTP, env: dict[str, str], names: Iterable[str]) -> Path:
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     dest = BACKUP_ROOT / stamp
-    dest.mkdir(parents=True, exist_ok=True)
+    BACKUP_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+    dest.mkdir(mode=0o700)
     ftp.cwd(env["ftp_dir"])
     remote = nlst(ftp)
     for name in names:
         if name not in remote:
             continue
         data = retr(ftp, name)
-        (dest / name).write_bytes(data)
+        with (dest / name).open("xb") as handle:
+            (dest / name).chmod(0o600)
+            handle.write(data)
         print(f"backup {name} ({len(data)} bytes)")
     print(f"BACKUP_DIR {dest}")
     return dest
@@ -178,44 +220,68 @@ def cmd_deploy(ftp: ftplib.FTP, env: dict[str, str], *, dry_run: bool, clear_cac
         if md5_bytes(local) != md5_bytes(retr(ftp, name)):
             uploads.append(name)
 
-    deletes = sorted(
-        ((remote - PRESERVE_REMOTE) - set(DEPLOY_FILES)) | (remote & OBSOLETE_REMOTE)
-    )
-    # Never delete directories via this path.
-    deletes = [n for n in deletes if n not in ("cache", "logs")]
+    deletes = sorted(remote & OBSOLETE_REMOTE)
+    protections = []
+    for directory in ("cache", "logs"):
+        ftp.cwd(env["ftp_dir"])
+        existing = None
+        if directory in remote:
+            ftp.cwd(env["ftp_dir"] + "/" + directory)
+            if ".htaccess" in nlst(ftp):
+                existing = retr(ftp, ".htaccess")
+        if existing != CACHE_HTACCESS.encode("utf-8"):
+            protections.append((directory, existing))
+    ftp.cwd(env["ftp_dir"])
 
     print("Plan:")
     print(f"  upload ({len(uploads)}): {', '.join(uploads) or '—'}")
     print(f"  delete ({len(deletes)}): {', '.join(deletes) or '—'}")
+    print(f"  protections: {', '.join(d for d, _ in protections) or '—'}")
     print(f"  clear_cache: {clear_cache}")
     if dry_run:
         print("Dry-run only; no changes.")
         return 0
 
-    backup_names = sorted(set(uploads) | set(deletes) | {"config.php", ".htaccess"})
-    backup_remote(ftp, env, backup_names)
+    if not uploads and not deletes and not protections and not clear_cache:
+        print("Already in sync; no changes.")
+        return 0
+    backup_names = sorted(set(uploads) | set(deletes))
+    backup = backup_remote(ftp, env, backup_names)
+    for directory, previous in protections:
+        if previous is not None:
+            target = backup / directory
+            target.mkdir(mode=0o700)
+            (target / ".htaccess").write_bytes(previous)
+            (target / ".htaccess").chmod(0o600)
 
-    ftp.cwd(env["ftp_dir"])
-    for name in uploads:
-        data = (LOCAL_API / name).read_bytes()
-        stor(ftp, name, data)
-        print(f"uploaded {name} ({len(data)} bytes)")
-
-    for name in deletes:
-        try:
-            ftp.delete(name)
+    # All uploads must finish and verify before any live code is replaced.
+    staged = []
+    try:
+        ftp.cwd(env["ftp_dir"])
+        for name in uploads:
+            data = (LOCAL_API / name).read_bytes()
+            staged.append((stage_upload(ftp, name, data), name, data))
+        for temporary, name, data in staged:
+            publish(ftp, temporary, name, data)
+            print(f"uploaded and verified {name} ({len(data)} bytes)")
+        for directory, _ in protections:
+            ensure_dir(ftp, directory, env["ftp_dir"])
+            ftp.cwd(env["ftp_dir"] + "/" + directory)
+            data = CACHE_HTACCESS.encode("utf-8")
+            temporary = stage_upload(ftp, ".htaccess", data)
+            publish(ftp, temporary, ".htaccess", data)
+            print(f"protected {directory}/.htaccess")
+        ftp.cwd(env["ftp_dir"])
+        for name in deletes:
+            ftp.delete(name)  # Failure must produce a nonzero exit status.
             print(f"deleted {name}")
-        except ftplib.error_perm as exc:
-            print(f"delete failed {name}: {exc}")
-
-    # Ensure protected dirs + htaccess exist.
-    ensure_dir(ftp, "cache", env["ftp_dir"])
-    ensure_dir(ftp, "logs", env["ftp_dir"])
-    ftp.cwd(env["ftp_dir"] + "/cache")
-    stor(ftp, ".htaccess", CACHE_HTACCESS.encode("utf-8"))
-    ftp.cwd(env["ftp_dir"] + "/logs")
-    stor(ftp, ".htaccess", LOGS_HTACCESS.encode("utf-8"))
-    print("ensured cache/.htaccess and logs/.htaccess")
+    finally:
+        ftp.cwd(env["ftp_dir"])
+        for temporary, _, _ in staged:
+            try:
+                ftp.delete(temporary)
+            except ftplib.error_perm:
+                pass
 
     if clear_cache:
         clear_remote_cache(ftp, env)
