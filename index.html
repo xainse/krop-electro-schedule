@@ -660,6 +660,19 @@
         const data = await res.json();
         if (request !== loadRequest || queue !== currentQueue) return;
         if (data.success !== true || (data.queue && data.queue !== queue)) throw new Error('Некоректна відповідь API');
+        if (data.not_announced === true) {
+          cachedEntry = null;
+          storageSet(cacheKey(), 'null');
+          render(Array(48).fill(null));
+          showEmergency(null);
+          updatedMeta.textContent = Number.isFinite(data.updated) && data.updated > 0
+            ? `Перевірено: ${new Date(data.updated * 1000).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`
+            : 'Актуальний графік відсутній';
+          statusMsg.textContent = 'Готово';
+          apiErrorMsg.textContent = data.message || 'Графіки відключення не оголошені';
+          apiErrorMsg.style.display = 'block';
+          return;
+        }
         if (!isCurrentData(data)) {
           cachedEntry = null;
           storageSet(cacheKey(), 'null');

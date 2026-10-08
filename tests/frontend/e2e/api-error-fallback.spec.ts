@@ -25,6 +25,21 @@ test('expired live payload cannot show all-day power or emergency as current', a
   await expect(page.locator('#emergencyMsg')).toBeHidden();
 });
 
+test('not announced schedule shows dedicated message', async ({ page }) => {
+  await mockApi(page, {
+    available: false,
+    not_announced: true,
+    message: 'Графіки відключення не оголошені',
+    schedule: null,
+    queues: {},
+  });
+  await page.goto('/index.html');
+  await expect(page.locator('#statusMsg')).toHaveText('Готово');
+  await expect(page.locator('#apiErrorMsg')).toHaveText('Графіки відключення не оголошені');
+  await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(0);
+  await expect(page.locator('#grid .emoji', { hasText: '🌑' })).toHaveCount(0);
+});
+
 test('late response from previous queue cannot overwrite selection', async ({ page }) => {
   let release: () => void = () => {};
   const gate = new Promise<void>(resolve => { release = resolve; });

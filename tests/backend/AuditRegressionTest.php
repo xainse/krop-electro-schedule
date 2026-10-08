@@ -23,6 +23,44 @@ class AuditRegressionTest extends TestCase {
         $this->assertTrue(scheduleResponse($data, '1.1', $now + 601)['stale']);
         $this->assertSame($now - 20, scheduleResponse($data, '1.1', $now + 601)['updated']);
     }
+    public function testNotAnnouncedWhenSourcesCheckedWithoutTodaySchedule(): void {
+        $now = strtotime('2026-10-08 12:00:00');
+        $data = ['date' => '08.10.2026', 'verified_at' => $now - 10, 'queues' => [], 'not_announced' => true];
+        $response = scheduleResponse($data, '1.1', $now);
+        $this->assertTrue($response['not_announced']);
+        $this->assertFalse($response['available']);
+        $this->assertFalse($response['stale']);
+        $this->assertSame('Графіки відключення не оголошені', $response['message']);
+        $this->assertNull($response['schedule']);
+        $this->assertFalse(isCurrentSchedulePayload(['date' => '08.10.2026', 'queues' => [], 'not_announced' => true], $now));
+        $this->assertTrue(isCurrentSchedulePayload(['date' => '08.10.2026', 'queues' => ['1.1' => '']], $now));
+    }
+    public function testEndpointReturnsNotAnnouncedWithoutHttpError(): void {
+        $runtime = sys_get_temp_dir() . '/krop-not-announced-' . bin2hex(random_bytes(5));
+        mkdir($runtime, 0700);
+        $timestamp = time() - 15;
+        file_put_contents($runtime . '/blackout_cache.json', json_encode([
+            'date' => date('d.m.Y'),
+            'verified_at' => $timestamp,
+            'queues' => [],
+            'not_announced' => true,
+        ]));
+        file_put_contents($runtime . '/last_source_check.txt', (string)time());
+        $endpoint = realpath(__DIR__ . '/../../api/blackout.php');
+        try {
+            $script = "define('KROP_TEST_MODE',true); define('ENABLE_LOGGING',false); define('CACHE_DIR'," . var_export($runtime, true) . "); define('LOGS_DIR',CACHE_DIR.'/logs'); \$_SERVER['REQUEST_METHOD']='GET'; \$_GET=['queue'=>'1.1']; require " . var_export($endpoint, true) . ';';
+            $output = shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script));
+            $data = json_decode($output, true);
+            $this->assertTrue($data['success']);
+            $this->assertTrue($data['not_announced']);
+            $this->assertFalse($data['available']);
+            $this->assertSame('Графіки відключення не оголошені', $data['message']);
+        } finally {
+            foreach (glob($runtime . '/*') as $file) if (is_file($file)) unlink($file);
+            @unlink($runtime . '/logs/.htaccess'); @rmdir($runtime . '/logs');
+            @unlink($runtime . '/.htaccess'); @rmdir($runtime);
+        }
+    }
     public function testTomorrowDoesNotReplaceToday(): void {
         $key = date('Y-m-d');
         $tomorrow = date('Y-m-d', strtotime('+1 day'));

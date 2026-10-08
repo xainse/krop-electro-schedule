@@ -28,6 +28,19 @@ test('expired production payload never becomes all-day power', async () => {
   expect(text('hoursOnStat')).toBe('—');
   expect(dom.window.document.getElementById('emergencyMsg').style.display).toBe('none');
 });
+test('not announced schedule shows plain message without connection error', async () => {
+  await start(async () => response(payload({
+    available: false,
+    not_announced: true,
+    message: 'Графіки відключення не оголошені',
+    schedule: null,
+    queues: {},
+  })));
+  expect(text('apiErrorMsg')).toBe('Графіки відключення не оголошені');
+  expect(text('statusMsg')).toBe('Готово');
+  expect(text('grid')).not.toContain('⚡');
+  expect(text('grid')).not.toContain('🌑');
+});
 test('API failure preserves only the same queue and keeps emergency uncertainty', async () => {
   const w = await start(async () => response(payload({emergency_mode: true})));
   expect(text('statusMsg')).toBe('Готово');

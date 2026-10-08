@@ -15,7 +15,7 @@ require_once __DIR__ . '/data.php';
 
 /**
  * Завантажує та парсить дані з сайту kiroe.com.ua
- * @return array|false Дані графіку або false
+ * @return array|null|false Графік | сторінка прочитана без графіка | помилка завантаження
  */
 function fetchFromSite() {
     $html = fetchUrl(SITE_URL);
@@ -32,7 +32,8 @@ function fetchFromSite() {
     }
     
     if (!$parsed) {
-        return false;
+        // HTML отримано, але розкладу в контенті немає — це не збій джерела.
+        return null;
     }
     
     // ГАВ визначаємо тією ж логікою, що й для Telegram (parser.php)

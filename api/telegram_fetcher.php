@@ -40,7 +40,7 @@ function mergeSchedulesByMessageNum(array $entries) {
 /**
  * Отримує останні повідомлення з Telegram та парсить графіки
  * @param int $limit Кількість повідомлень для обробки при першому запуску
- * @return array|false Дані графіку або false
+ * @return array|null|false Графік на сьогодні | джерело прочитано, але графіка немає | помилка завантаження/парсингу
  */
 function fetchFromTelegram($limit = 10) {
     // Отримуємо останній оброблений ID
@@ -161,9 +161,8 @@ function fetchFromTelegram($limit = 10) {
             }
         }
     }
-    // No current schedule observed upstream: do not re-stamp stored or past data as fresh.
-
-    return false;
+    // Джерело прочитано без помилок, але графіка на сьогодні немає — не підміняємо минулі дані.
+    return null;
 }
 
 /**

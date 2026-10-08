@@ -78,16 +78,39 @@ if ($view['stale']) {
             if (scheduleResponse($cache)['stale'] && time() - $lastCheck >= TELEGRAM_CHECK_INTERVAL) {
                 // Failed requests are throttled too. Public force_refresh cannot bypass this.
                 @file_put_contents($lastCheckPath, (string)time(), LOCK_EX);
-                $fresh = fetchFromTelegram(20);
-                if (!$fresh || empty($fresh['queues']) || dateToKey($fresh['date'] ?? null) !== date('Y-m-d')) {
-                    $fresh = fetchFromSite();
-                    if ($fresh) $fresh['source'] = SITE_URL;
-                } else {
+                $sourcesChecked = false;
+                $fresh = null;
+                $telegram = fetchFromTelegram(20);
+                if (isCurrentSchedulePayload($telegram)) {
+                    $fresh = $telegram;
                     $fresh['source'] = TELEGRAM_CHANNEL_URL;
+                    $sourcesChecked = true;
+                } else {
+                    if ($telegram !== false) $sourcesChecked = true;
+                    $site = fetchFromSite();
+                    if (isCurrentSchedulePayload($site)) {
+                        $fresh = $site;
+                        $fresh['source'] = SITE_URL;
+                        $sourcesChecked = true;
+                    } elseif ($site !== false) {
+                        $sourcesChecked = true;
+                    }
                 }
-                if ($fresh && !empty($fresh['queues']) && dateToKey($fresh['date'] ?? null) === date('Y-m-d')) {
+                if ($fresh) {
+                    unset($fresh['not_announced']);
                     $fresh['verified_at'] = time();
                     $cache = $fresh;
+                    writeBlackoutCache($cachePath, $cache);
+                } elseif ($sourcesChecked) {
+                    // Джерела відповіли без помилок, але графіка на сьогодні немає.
+                    $cache = [
+                        'date' => date('d.m.Y'),
+                        'verified_at' => time(),
+                        'queues' => [],
+                        'not_announced' => true,
+                        'emergency_mode' => null,
+                        'source' => null,
+                    ];
                     writeBlackoutCache($cachePath, $cache);
                 }
             }

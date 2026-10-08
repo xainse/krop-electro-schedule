@@ -45,3 +45,5 @@ tests/backend/.phpunit.result.cache
 # Local secrets (FTP/SFTP)
 .env
 .deploy-backup/
+
+__pycache__/
