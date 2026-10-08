@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+## [4.2] - 2026-10-08
+
+### Додано
+- Project skill `deploy-api-ftp` для деплою PHP API через FTP (status/deploy/clear-cache/pull-logs).
+
+### Виправлено
+- `json_encode` більше не падає warning на PHP без `JSON_INVALID_UTF8_SUBSTITUTE`.
+
+### Змінено
+- `.gitignore`: ігнор `.env` і `.deploy-backup/`.
+
 ## [4.1] - 2026-10-08
 
 ### Додано
