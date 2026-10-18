@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-mONP+LU4XXiCXGKhxeVQPHUS85djD0JE0JNbgkGj3d4=' 'sha256-e7OXYpJTRT/W+SBEV5P1nBnF/ulMrtx8tKd74sN0CTQ=' https://www.googletagmanager.com; connect-src 'self' https://xain.in.ua https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google-analytics.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-mONP+LU4XXiCXGKhxeVQPHUS85djD0JE0JNbgkGj3d4=' 'sha256-0Ke64aylVCK8FkqZtoE2zjKiwJ3FlyKzRDKQn1BsTjo=' https://www.googletagmanager.com; connect-src 'self' https://xain.in.ua https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google-analytics.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Графік 1.1 — 24 години</title>
@@ -81,7 +81,7 @@
     </div>
     <div class="donation-banner">
       <a href="https://bit.ly/49dS5cH" target="_blank" rel="noopener noreferrer">
-        <img src="img/6797cbcba2d4e6545f20812f_spilnota_sternenka_simple logo.svg" alt="Spilnota" />
+        <img src="img/spilnota-logo.svg" alt="Spilnota" />
         <span>Допоможи 🇺🇦 Україні! Задонать на Русоріз!</span>
       </a>
     </div>
@@ -97,7 +97,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '4.7';
+    const VERSION = '4.9';
     
     // Production always uses the trusted public API. Overrides are development-only.
     const TRUSTED_API_ORIGIN = 'https://xain.in.ua';
@@ -669,19 +669,17 @@
         if (request !== loadRequest || queue !== currentQueue) return;
         if (data.success !== true || (data.queue && data.queue !== queue)) throw new Error('Некоректна відповідь API');
         if (data.not_announced === true) {
-          if (data.date !== todayKyiv() || data.stale !== false || !Number.isFinite(data.updated) ||
-              data.updated <= 0 || data.updated > Date.now() / 1000 + 60 || Date.now() / 1000 - data.updated >= 600) {
-            throw new Error('Непідтверджене повідомлення джерела');
-          }
+          const fresh = data.date === todayKyiv() && data.stale === false && Number.isFinite(data.updated) &&
+            data.updated > 0 && data.updated <= Date.now() / 1000 + 60 && Date.now() / 1000 - data.updated < 600;
           cachedEntry = null;
           storageSet(cacheKey(), 'null');
           render(Array(48).fill(null));
-          showEmergency(data.emergency_mode === true);
-          updatedMeta.textContent = Number.isFinite(data.updated) && data.updated > 0
+          showEmergency(fresh ? data.emergency_mode === true : null);
+          updatedMeta.textContent = fresh
             ? `Перевірено: ${new Date(data.updated * 1000).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`
             : 'Актуальний графік відсутній';
-          statusMsg.textContent = 'Готово';
-          apiErrorMsg.textContent = 'Графіки відключення не оголошені';
+          statusMsg.textContent = fresh ? 'Готово' : 'Показано невідомі значення';
+          apiErrorMsg.textContent = 'На сьогодні немає актуального графіку';
           apiErrorMsg.style.display = 'block';
           return;
         }
@@ -689,7 +687,7 @@
           cachedEntry = null;
           storageSet(cacheKey(), 'null');
           showCachedOrUnknown();
-          apiErrorMsg.textContent = data.date ? `Джерело надало графік на ${data.date}. Графік на сьогодні не підтверджено.` : 'Джерела не надали актуального графіка на сьогодні.';
+          apiErrorMsg.textContent = 'На сьогодні немає актуального графіку';
           apiErrorMsg.style.display = 'block';
           return;
         }
@@ -715,7 +713,11 @@
       } catch (err) {
         if (request !== loadRequest || queue !== currentQueue) return;
         showCachedOrUnknown();
-        apiErrorMsg.textContent = 'Не вдалося підключитися до API або отримати коректний графік. Спробуйте оновити пізніше.';
+        const msg = String(err && err.message || '');
+        const noSchedule = /графік|повідомлення джерела|Некоректна відповідь/i.test(msg);
+        apiErrorMsg.textContent = noSchedule
+          ? 'На сьогодні немає актуального графіку'
+          : 'Не вдалося підключитися до API або отримати коректний графік. Спробуйте оновити пізніше.';
         apiErrorMsg.style.display = 'block';
       }
     }

@@ -23,7 +23,7 @@ afterEach(() => dom?.window.close());
 
 test('expired production payload never becomes all-day power', async () => {
   await start(async () => response(payload({date: '30.06.2026', schedule: '', emergency_mode: true})));
-  expect(text('apiErrorMsg')).toContain('30.06.2026');
+  expect(text('apiErrorMsg')).toBe('На сьогодні немає актуального графіку');
   expect(text('grid')).not.toContain('⚡');
   expect(text('hoursOnStat')).toBe('—');
   expect(dom.window.document.getElementById('emergencyMsg').style.display).toBe('none');
@@ -32,11 +32,11 @@ test('not announced schedule shows plain message without connection error', asyn
   await start(async () => response(payload({
     available: false,
     not_announced: true,
-    message: 'Графіки відключення не оголошені',
+    message: 'На сьогодні немає актуального графіку',
     schedule: null,
     queues: {},
   })));
-  expect(text('apiErrorMsg')).toBe('Графіки відключення не оголошені');
+  expect(text('apiErrorMsg')).toBe('На сьогодні немає актуального графіку');
   expect(text('statusMsg')).toBe('Готово');
   expect(text('grid')).not.toContain('⚡');
   expect(text('grid')).not.toContain('🌑');
@@ -103,5 +103,6 @@ test.each([
 ])('unverified absence notice does not become current: %j', async override => {
   await start(async () => response(payload({not_announced: true, available: false, ...override})));
   expect(text('statusMsg')).not.toBe('Готово');
-  expect(text('apiErrorMsg')).not.toBe('Графіки відключення не оголошені');
+  expect(text('apiErrorMsg')).toBe('На сьогодні немає актуального графіку');
+  expect(text('apiErrorMsg')).not.toContain('підключитися до API');
 });

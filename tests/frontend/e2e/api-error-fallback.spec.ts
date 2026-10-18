@@ -19,7 +19,7 @@ test('same queue same day fallback is marked stale and keeps emergency warning',
 test('expired live payload cannot show all-day power or emergency as current', async ({ page }) => {
   await mockApi(page, { date: '30.06.2026', schedule: '', emergency_mode: true });
   await page.goto('/index.html');
-  await expect(page.locator('#apiErrorMsg')).toContainText('30.06.2026');
+  await expect(page.locator('#apiErrorMsg')).toHaveText('На сьогодні немає актуального графіку');
   await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(0);
   await expect(page.locator('#overviewTableBody td.state-unknown')).toHaveCount(288);
   await expect(page.locator('#emergencyMsg')).toBeHidden();
@@ -29,13 +29,13 @@ test('not announced schedule shows dedicated message', async ({ page }) => {
   await mockApi(page, {
     available: false,
     not_announced: true,
-    message: 'Графіки відключення не оголошені',
+    message: 'На сьогодні немає актуального графіку',
     schedule: null,
     queues: {},
   });
   await page.goto('/index.html');
   await expect(page.locator('#statusMsg')).toHaveText('Готово');
-  await expect(page.locator('#apiErrorMsg')).toHaveText('Графіки відключення не оголошені');
+  await expect(page.locator('#apiErrorMsg')).toHaveText('На сьогодні немає актуального графіку');
   await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(0);
   await expect(page.locator('#grid .emoji', { hasText: '🌑' })).toHaveCount(0);
 });
