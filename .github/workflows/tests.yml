@@ -83,8 +83,9 @@ jobs:
           persist-credentials: false
       - name: Stage public frontend files only
         run: |
-          mkdir -p "$RUNNER_TEMP/krop-pages"
+          mkdir -p "$RUNNER_TEMP/krop-pages/img"
           cp index.html styles.css favicon.svg preview.png "$RUNNER_TEMP/krop-pages/"
+          cp img/spilnota-logo.svg "$RUNNER_TEMP/krop-pages/img/"
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0; nested upload-artifact also SHA-pinned
         with:
           path: ${{ runner.temp }}/krop-pages
