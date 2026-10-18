@@ -98,7 +98,7 @@ API використовує каскадний fallback:
 
 ## Встановлення та перевірка
 
-Потрібні PHP 8.3+ з DOM, mbstring, cURL/OpenSSL, Node.js 22+ і Composer. API читає відкритий Telegram канал без bot token. `api/config.php` необов'язковий; зразок overrides — `api/config.example.php`. PHP повинен мати доступ до запису в runtime каталоги `api/cache` та `api/logs`.
+Потрібні PHP 8.5+ з DOM, mbstring, cURL/OpenSSL, Node.js 22+ і Composer. API читає відкритий Telegram канал без bot token. `api/config.php` необов'язковий; зразок overrides — `api/config.example.php`. PHP повинен мати доступ до запису в runtime каталоги `api/cache` та `api/logs`.
 
 ```sh
 cd tests/backend
