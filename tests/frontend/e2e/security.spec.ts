@@ -33,5 +33,5 @@ test('an expired absence notice does not look current', async ({ page }) => {
   await mockApi(page, {not_announced: true, available: false, stale: true, date: '01.01.2000'});
   await page.goto('/index.html');
   await expect(page.locator('#statusMsg')).not.toHaveText('Готово');
-  await expect(page.locator('#apiErrorMsg')).not.toHaveText('Графіки відключення не оголошені');
+  await expect(page.locator('#apiErrorMsg')).toHaveText('На сьогодні немає актуального графіку');
 });

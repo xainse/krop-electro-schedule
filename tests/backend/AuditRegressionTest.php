@@ -30,7 +30,7 @@ class AuditRegressionTest extends TestCase {
         $this->assertTrue($response['not_announced']);
         $this->assertFalse($response['available']);
         $this->assertFalse($response['stale']);
-        $this->assertSame('Графіки відключення не оголошені', $response['message']);
+        $this->assertSame('На сьогодні немає актуального графіку', $response['message']);
         $this->assertNull($response['schedule']);
         $this->assertFalse(isCurrentSchedulePayload(['date' => '08.10.2026', 'queues' => [], 'not_announced' => true], $now));
         $this->assertTrue(isCurrentSchedulePayload(['date' => '08.10.2026', 'queues' => ['1.1' => '']], $now));
@@ -59,7 +59,7 @@ class AuditRegressionTest extends TestCase {
             $this->assertTrue($data['success']);
             $this->assertTrue($data['not_announced']);
             $this->assertFalse($data['available']);
-            $this->assertSame('Графіки відключення не оголошені', $data['message']);
+            $this->assertSame('На сьогодні немає актуального графіку', $data['message']);
         } finally {
             foreach (glob($runtime . '/*') as $file) if (is_file($file)) unlink($file);
             @unlink($runtime . '/logs/.htaccess'); @rmdir($runtime . '/logs');
@@ -71,7 +71,7 @@ class AuditRegressionTest extends TestCase {
         $this->assertNull(selectSourcePayload(null, false, $now));
         $this->assertNull(selectSourcePayload(false, null, $now));
         $this->assertFalse(parseNoScheduleNotice('Сторінка на технічному обслуговуванні'));
-        $this->assertFalse(parseNoScheduleNotice('Графіки відключення не оголошені'));
+        $this->assertFalse(parseNoScheduleNotice('На сьогодні немає актуального графіку'));
         $notice = parseNoScheduleNotice('Сьогодні графіки відключення не оголошені', $now);
         $this->assertTrue($notice['not_announced']);
         $this->assertSame($notice, selectSourcePayload($notice, false, $now));
@@ -99,7 +99,7 @@ class AuditRegressionTest extends TestCase {
         $response = scheduleResponse($fresh, '1.1', $now);
         $this->assertTrue($response['not_announced']);
         $this->assertFalse($response['stale']);
-        $this->assertSame('Графіки відключення не оголошені', $response['message']);
+        $this->assertSame('На сьогодні немає актуального графіку', $response['message']);
     }
     public function testTomorrowDoesNotReplaceToday(): void {
         $key = date('Y-m-d');
