@@ -81,6 +81,26 @@ class AuditRegressionTest extends TestCase {
         $notice['verified_at'] = $now - 900;
         $this->assertFalse(scheduleResponse($notice, '1.1', $now)['not_announced']);
     }
+    public function testSuccessfulTelegramEmptyDayReplacesYesterdayCache(): void {
+        $now = strtotime('2026-10-18 20:00:00');
+        $absence = [
+            'date' => '18.10.2026',
+            'queues' => [],
+            'not_announced' => true,
+            'notice_verified' => true,
+            'source' => 'https://t.me/s/SvitloKropyvnytskyiMisto',
+        ];
+        $this->assertSame($absence, selectSourcePayload($absence, false, $now));
+        $yesterday = ['date' => '17.10.2026', 'queues' => ['1.1' => '12:00-14:00'], 'verified_at' => $now - 3600];
+        $this->assertTrue(scheduleResponse($yesterday, '1.1', $now)['stale']);
+        $this->assertFalse(scheduleResponse($yesterday, '1.1', $now)['available']);
+        $fresh = $absence;
+        $fresh['verified_at'] = $now;
+        $response = scheduleResponse($fresh, '1.1', $now);
+        $this->assertTrue($response['not_announced']);
+        $this->assertFalse($response['stale']);
+        $this->assertSame('Графіки відключення не оголошені', $response['message']);
+    }
     public function testTomorrowDoesNotReplaceToday(): void {
         $key = date('Y-m-d');
         $tomorrow = date('Y-m-d', strtotime('+1 day'));
