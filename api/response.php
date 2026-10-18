@@ -20,7 +20,7 @@ function scheduleResponse($data, $queue = null, $now = null) {
         'stale' => $stale,
         'available' => !empty($queues),
         'not_announced' => $notAnnounced,
-        'message' => $notAnnounced ? 'Графіки відключення не оголошені' : null,
+        'message' => $notAnnounced ? 'На сьогодні немає актуального графіку' : null,
         'emergency_mode' => $current && $verified ? ($data['emergency_mode'] ?? null) : null,
         'source' => $data['source'] ?? null,
     ];

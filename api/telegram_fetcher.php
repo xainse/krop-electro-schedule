@@ -165,8 +165,19 @@ function fetchFromTelegram($limit = 10) {
             }
         }
     }
-    // Джерело прочитано без помилок, але графіка на сьогодні немає — не підміняємо минулі дані.
-    return null;
+    // Канал прочитано без помилок, але поста з графіком на сьогодні немає.
+    // Повертаємо verified absence на сьогодні, щоб не тримати в кеші вчорашній графік.
+    $dateDMY = keyToDate($todayKey);
+    if ($dateDMY === false) {
+        return null;
+    }
+    return [
+        'date' => $dateDMY,
+        'emergency_mode' => ($emergencyModeTime > 0) ? $emergencyModeDetected : null,
+        'queues' => [],
+        'not_announced' => true,
+        'notice_verified' => true,
+    ];
 }
 
 /**
