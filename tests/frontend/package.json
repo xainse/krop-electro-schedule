@@ -4,16 +4,17 @@
   "private": true,
   "scripts": {
     "test": "jest --verbose",
+    "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "playwright:install": "playwright install"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "22.18.8",
     "jest": "^30.5.2",
     "jest-environment-jsdom": "^30.5.2",
-    "@playwright/test": "1.64.0",
-    "typescript": "7.0.2",
-    "@types/node": "26.6.5"
+    "typescript": "7.0.2"
   },
   "overrides": {
     "@istanbuljs/load-nyc-config": {
