@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [5.1] - 2026-10-19
+
+### Змінено
+- `@types/node` узгоджено з CI Node 22 (`22.18.8`).
+- У verify додано `npm run typecheck` (`tsc --noEmit`).
+
 ## [5.0] - 2026-10-18
 
 ### Змінено

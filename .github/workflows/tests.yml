@@ -34,6 +34,8 @@ jobs:
         working-directory: tests/backend
       - run: npm ci --ignore-scripts
         working-directory: tests/frontend
+      - run: npm run typecheck
+        working-directory: tests/frontend
       - run: npm test -- --runInBand
         working-directory: tests/frontend
       - run: npx playwright install --with-deps chromium

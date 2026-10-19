@@ -6,7 +6,7 @@
 
 | Issue | Зміни | Що залишається |
 |---|---|---|
-| [#19](https://github.com/xainse/krop-electro-schedule/issues/19) | FTPS, перевірка сертифіката, TLS ≥1.2, PROT P, жодного plaintext fallback; коміт `ebe1d42` | Перевірити FTPS хостингу та змінити раніше використаний FTP-пароль через панель |
+| [#19](https://github.com/xainse/krop-electro-schedule/issues/19) | FTPS, перевірка сертифіката, TLS ≥1.2, PROT P, жодного plaintext fallback; коміт `ebe1d42` | Перевірити FTPS на хостингу; після міграції оновити облікові дані деплою |
 | [#20](https://github.com/xainse/krop-electro-schedule/issues/20) | Production API зафіксовано на `https://xain.in.ua`; debug допускається лише на тому самому loopback origin | Виконано, frontend v4.6 перевірено на живому сайті |
 | [#21](https://github.com/xainse/krop-electro-schedule/issues/21) | Відсутність графіка вимагає явного датованого повідомлення; збій парсера зберігає невизначеність; legacy-маркери кешу відкидаються | Перевірка джерел після деплою |
 | [#22](https://github.com/xainse/krop-electro-schedule/issues/22) | Ліміт запитів, bounded logs, вилучення IP/User-Agent з логів | Налаштування лімітів вебсервера та перевірка production UID/проксі |
@@ -37,7 +37,7 @@ Online audit під час npm install: **0 vulnerabilities**, 323 packages. Off
 ## Production перевірка та міграція
 
 1. На сервері підтвердити підтримувану security-updated PHP-версію, cURL/DOM/mbstring, `display_errors=Off`, `expose_php=Off`, HTTPS redirect і TLS 1.2/1.3, HSTS для власного host. Не створювати публічний phpinfo.
-2. Перевірити FTPS командою `python3 .cursor/skills/deploy-api-ftp/scripts/ftp_sync.py status`. Помилка TLS/DNS не дозволяє повертатися до plaintext FTP. Після переходу змінити FTP-пароль у панелі та приватному `.env`.
+2. Перевірити FTPS командою `python3 .cursor/skills/deploy-api-ftp/scripts/ftp_sync.py status`. Помилка TLS/DNS не дозволяє повертатися до plaintext FTP. Після переходу оновити облікові дані деплою в приватному `.env` (не комітити).
 3. Поза webroot створити runtime directory з власником PHP service user (`0700`), приватний config (`0600`), встановити серверні `KROP_RUNTIME_DIR` та `KROP_CONFIG_FILE`. Прибрати старі CACHE_DIR/LOGS_DIR overrides або привести їх до тих самих шляхів. Локальні тести не підтверджують server UID і можливість такого перенесення.
 4. Залишити старий кеш як backup до перевірки. В новому runtime почати з порожнього кешу, щоб не копіювати активні lock-файли. Зовнішній runtime не обслуговується командою FTPS clear-cache/pull-logs: вона працює з legacy `api/cache` і `api/logs`.
 5. Після проходження всіх тестів виконати FTPS dry-run/deploy за skill. API entrypoint публікується після модулів. Загальний багатофайловий реліз не є атомарним; потрібне коротке контрольоване вікно змін або release-directory switch хостингу.
