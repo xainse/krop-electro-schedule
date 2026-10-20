@@ -28,17 +28,19 @@ test('expired production payload never becomes all-day power', async () => {
   expect(text('hoursOnStat')).toBe('—');
   expect(dom.window.document.getElementById('emergencyMsg').style.display).toBe('none');
 });
-test('not announced schedule shows plain message without connection error', async () => {
+test('not announced schedule for today shows green full-day power', async () => {
   await start(async () => response(payload({
     available: false,
     not_announced: true,
-    message: 'На сьогодні немає актуального графіку',
+    message: 'Графік відключень відсутній',
     schedule: null,
     queues: {},
   })));
-  expect(text('apiErrorMsg')).toBe('На сьогодні немає актуального графіку');
+  const banner = dom.window.document.getElementById('apiErrorMsg');
+  expect(banner.textContent).toBe('Графік відключень відсутній');
+  expect(banner.classList.contains('update-ok')).toBe(true);
   expect(text('statusMsg')).toBe('Готово');
-  expect(text('grid')).not.toContain('⚡');
+  expect(text('grid')).toContain('⚡');
   expect(text('grid')).not.toContain('🌑');
 });
 test('API failure preserves only the same queue and keeps emergency uncertainty', async () => {
@@ -97,12 +99,19 @@ test('local development accepts only a loopback API origin', async () => {
 });
 
 
-test.each([
-  { date: '01.01.2000' }, { stale: true }, { updated: null },
-  { updated: Math.floor(Date.now()/1000) - 900 }, { updated: Math.floor(Date.now()/1000) + 3600 },
-])('unverified absence notice does not become current: %j', async override => {
-  await start(async () => response(payload({not_announced: true, available: false, ...override})));
+test('absence notice for another day does not become all-day power', async () => {
+  await start(async () => response(payload({not_announced: true, available: false, date: '01.01.2000'})));
   expect(text('statusMsg')).not.toBe('Готово');
   expect(text('apiErrorMsg')).toBe('На сьогодні немає актуального графіку');
+  expect(text('grid')).not.toContain('⚡');
   expect(text('apiErrorMsg')).not.toContain('підключитися до API');
+});
+test.each([
+  { stale: true }, { updated: null },
+  { updated: Math.floor(Date.now()/1000) - 900 }, { updated: Math.floor(Date.now()/1000) + 3600 },
+])('today not_announced still shows full-day power: %j', async override => {
+  await start(async () => response(payload({not_announced: true, available: false, ...override})));
+  expect(text('statusMsg')).toBe('Готово');
+  expect(text('apiErrorMsg')).toBe('Графік відключень відсутній');
+  expect(text('grid')).toContain('⚡');
 });

@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-mONP+LU4XXiCXGKhxeVQPHUS85djD0JE0JNbgkGj3d4=' 'sha256-1nP0iUV3Gm7oNjUcu+kMau2j2+ypgp8FvC8/g+8hZv8=' https://www.googletagmanager.com; connect-src 'self' https://xain.in.ua https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google-analytics.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-mONP+LU4XXiCXGKhxeVQPHUS85djD0JE0JNbgkGj3d4=' 'sha256-UcdnQoykdEUgVvscgCgh7Mf0kw//Jn4+3VkS+p+hjOc=' https://www.googletagmanager.com; connect-src 'self' https://xain.in.ua https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google-analytics.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Графік 1.1 — 24 години</title>
@@ -97,7 +97,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '5.1';
+    const VERSION = '5.2';
     
     // Production always uses the trusted public API. Overrides are development-only.
     const TRUSTED_API_ORIGIN = 'https://xain.in.ua';
@@ -534,6 +534,12 @@
         if (!res.ok) throw new Error('API unavailable');
         const data = await res.json();
         if (request !== overviewRequest) return;
+        if (data.success === true && data.not_announced === true && data.date === todayKyiv()) {
+          const allOn = {};
+          for (const q of ['1.1', '1.2', '2.1', '2.2', '3.1', '3.2', '4.1', '4.2', '5.1', '5.2', '6.1', '6.2']) allOn[q] = '';
+          renderOverviewTable(allOn);
+          return;
+        }
         const usable = isCurrentData(data) && !data.stale && data.queues && typeof data.queues === 'object';
         renderOverviewTable(usable ? data.queues : {});
       } catch {
@@ -653,11 +659,19 @@
         statusMsg.textContent = 'Показано невідомі значення';
       }
     }
+    function setStatusBanner(text, kind) {
+      apiErrorMsg.textContent = text;
+      apiErrorMsg.classList.remove('update-warning', 'update-ok');
+      apiErrorMsg.classList.add(kind === 'ok' ? 'update-ok' : 'update-warning');
+      apiErrorMsg.style.display = 'block';
+    }
     async function load() {
       const request = ++loadRequest;
       const queue = currentQueue;
       errorMsg.style.display = 'none';
       apiErrorMsg.style.display = 'none';
+      apiErrorMsg.classList.remove('update-ok');
+      apiErrorMsg.classList.add('update-warning');
       if (cachedEntry?.date !== todayKyiv()) cachedEntry = null;
       showCachedOrUnknown();
       statusMsg.textContent = 'Завантаження…';
@@ -669,26 +683,35 @@
         if (request !== loadRequest || queue !== currentQueue) return;
         if (data.success !== true || (data.queue && data.queue !== queue)) throw new Error('Некоректна відповідь API');
         if (data.not_announced === true) {
-          const fresh = data.date === todayKyiv() && data.stale === false && Number.isFinite(data.updated) &&
-            data.updated > 0 && data.updated <= Date.now() / 1000 + 60 && Date.now() / 1000 - data.updated < 600;
+          if (data.date === todayKyiv()) {
+            const periods = Array(48).fill(true);
+            const updated = Number.isFinite(data.updated) && data.updated > 0 ? data.updated : Math.floor(Date.now() / 1000);
+            previousHours = periods;
+            cachedEntry = { queue, date: data.date, periods, updated, emergency: data.emergency_mode === true };
+            storageSet(cacheKey(), JSON.stringify(cachedEntry));
+            render(periods);
+            showEmergency(data.emergency_mode === true);
+            updatedMeta.textContent = Number.isFinite(data.updated) && data.updated > 0
+              ? `Перевірено: ${new Date(data.updated * 1000).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`
+              : `Графік на ${data.date}`;
+            statusMsg.textContent = 'Готово';
+            setStatusBanner('Графік відключень відсутній', 'ok');
+            return;
+          }
           cachedEntry = null;
           storageSet(cacheKey(), 'null');
           render(Array(48).fill(null));
-          showEmergency(fresh ? data.emergency_mode === true : null);
-          updatedMeta.textContent = fresh
-            ? `Перевірено: ${new Date(data.updated * 1000).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`
-            : 'Актуальний графік відсутній';
-          statusMsg.textContent = fresh ? 'Готово' : 'Показано невідомі значення';
-          apiErrorMsg.textContent = 'На сьогодні немає актуального графіку';
-          apiErrorMsg.style.display = 'block';
+          showEmergency(null);
+          updatedMeta.textContent = 'Актуальний графік відсутній';
+          statusMsg.textContent = 'Показано невідомі значення';
+          setStatusBanner('На сьогодні немає актуального графіку', 'warn');
           return;
         }
         if (!isCurrentData(data)) {
           cachedEntry = null;
           storageSet(cacheKey(), 'null');
           showCachedOrUnknown();
-          apiErrorMsg.textContent = 'На сьогодні немає актуального графіку';
-          apiErrorMsg.style.display = 'block';
+          setStatusBanner('На сьогодні немає актуального графіку', 'warn');
           return;
         }
         const sourceLink = document.getElementById('sourceLink');
@@ -708,17 +731,19 @@
         showEmergency(cachedEntry.emergency, stale);
         updatedMeta.textContent = `Графік на ${data.date} · Перевірено: ${new Date(data.updated * 1000).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}${stale ? ' (⚠️ застарілі)' : ''}`;
         statusMsg.textContent = stale ? 'Дані застаріли; перевірте офіційне джерело' : 'Готово';
-        apiErrorMsg.style.display = stale ? 'block' : 'none';
-        apiErrorMsg.textContent = 'Не вдалося підтвердити свіжість графіка. Показано останні доступні дані.';
+        if (stale) setStatusBanner('Не вдалося підтвердити свіжість графіка. Показано останні доступні дані.', 'warn');
+        else apiErrorMsg.style.display = 'none';
       } catch (err) {
         if (request !== loadRequest || queue !== currentQueue) return;
         showCachedOrUnknown();
         const msg = String(err && err.message || '');
         const noSchedule = /графік|повідомлення джерела|Некоректна відповідь/i.test(msg);
-        apiErrorMsg.textContent = noSchedule
-          ? 'На сьогодні немає актуального графіку'
-          : 'Не вдалося підключитися до API або отримати коректний графік. Спробуйте оновити пізніше.';
-        apiErrorMsg.style.display = 'block';
+        setStatusBanner(
+          noSchedule
+            ? 'На сьогодні немає актуального графіку'
+            : 'Не вдалося підключитися до API або отримати коректний графік. Спробуйте оновити пізніше.',
+          'warn'
+        );
       }
     }
 

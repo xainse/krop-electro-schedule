@@ -34,4 +34,5 @@ test('an expired absence notice does not look current', async ({ page }) => {
   await page.goto('/index.html');
   await expect(page.locator('#statusMsg')).not.toHaveText('Готово');
   await expect(page.locator('#apiErrorMsg')).toHaveText('На сьогодні немає актуального графіку');
+  await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(0);
 });
