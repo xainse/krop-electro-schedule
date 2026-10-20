@@ -57,6 +57,13 @@ body {
   width: 100%;
 }
 
+.update-ok {
+  font-size: 14px;
+  color: #16a34a;
+  margin-top: 8px;
+  width: 100%;
+}
+
 .controls {
   display: flex;
   gap: 8px;

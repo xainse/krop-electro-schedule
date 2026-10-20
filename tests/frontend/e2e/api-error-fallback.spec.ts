@@ -29,14 +29,15 @@ test('not announced schedule shows dedicated message', async ({ page }) => {
   await mockApi(page, {
     available: false,
     not_announced: true,
-    message: 'На сьогодні немає актуального графіку',
+    message: 'Графік відключень відсутній',
     schedule: null,
     queues: {},
   });
   await page.goto('/index.html');
   await expect(page.locator('#statusMsg')).toHaveText('Готово');
-  await expect(page.locator('#apiErrorMsg')).toHaveText('На сьогодні немає актуального графіку');
-  await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(0);
+  await expect(page.locator('#apiErrorMsg')).toHaveText('Графік відключень відсутній');
+  await expect(page.locator('#apiErrorMsg')).toHaveClass(/update-ok/);
+  await expect(page.locator('#grid .emoji', { hasText: '⚡' })).toHaveCount(24);
   await expect(page.locator('#grid .emoji', { hasText: '🌑' })).toHaveCount(0);
 });
 
