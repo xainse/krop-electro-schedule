@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-mONP+LU4XXiCXGKhxeVQPHUS85djD0JE0JNbgkGj3d4=' 'sha256-UcdnQoykdEUgVvscgCgh7Mf0kw//Jn4+3VkS+p+hjOc=' https://www.googletagmanager.com; connect-src 'self' https://xain.in.ua https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google-analytics.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-mONP+LU4XXiCXGKhxeVQPHUS85djD0JE0JNbgkGj3d4=' 'sha256-7HGPUtuYnk+9W0/YSiO8X/g07HP01Auw5DgbJk/ElF0=' https://www.googletagmanager.com; connect-src 'self' https://xain.in.ua https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google-analytics.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Графік 1.1 — 24 години</title>
@@ -97,7 +97,7 @@
 
   <script>
     // Версія коду - оновлюється після кожної зміни
-    const VERSION = '5.2';
+    const VERSION = '5.3';
     
     // Production always uses the trusted public API. Overrides are development-only.
     const TRUSTED_API_ORIGIN = 'https://xain.in.ua';
@@ -120,16 +120,27 @@
     // fetch з таймаутом (мс), щоб не чекати надто довго при недоступному API
     const API_FETCH_TIMEOUT_MS = 15000;
     async function fetchWithTimeout(url, opts = {}) {
-      const ac = new AbortController();
-      const id = setTimeout(() => ac.abort(), API_FETCH_TIMEOUT_MS);
-      try {
-        const res = await fetch(url, { ...opts, signal: ac.signal });
-        const body = await res.text();
-        clearTimeout(id);
-        return { ok: res.ok, status: res.status, statusText: res.statusText, text: async () => body, json: async () => JSON.parse(body) };
-      } catch (e) {
-        clearTimeout(id);
-        throw e;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const ac = new AbortController();
+        const id = setTimeout(() => ac.abort(), API_FETCH_TIMEOUT_MS);
+        try {
+          const res = await fetch(url, { ...opts, signal: ac.signal });
+          const body = await res.text();
+          clearTimeout(id);
+          // Паралельні запити можуть отримати 429 через non-blocking flock на API.
+          if (res.status === 429 && attempt === 0) {
+            await new Promise(r => setTimeout(r, 1100));
+            continue;
+          }
+          return { ok: res.ok, status: res.status, statusText: res.statusText, text: async () => body, json: async () => JSON.parse(body) };
+        } catch (e) {
+          clearTimeout(id);
+          if (attempt === 0) {
+            await new Promise(r => setTimeout(r, 400));
+            continue;
+          }
+          throw e;
+        }
       }
     }
     
@@ -665,6 +676,11 @@
       apiErrorMsg.classList.add(kind === 'ok' ? 'update-ok' : 'update-warning');
       apiErrorMsg.style.display = 'block';
     }
+    function renderOverviewAllOn() {
+      const allOn = {};
+      for (const q of ['1.1', '1.2', '2.1', '2.2', '3.1', '3.2', '4.1', '4.2', '5.1', '5.2', '6.1', '6.2']) allOn[q] = '';
+      renderOverviewTable(allOn);
+    }
     async function load() {
       const request = ++loadRequest;
       const queue = currentQueue;
@@ -675,7 +691,7 @@
       if (cachedEntry?.date !== todayKyiv()) cachedEntry = null;
       showCachedOrUnknown();
       statusMsg.textContent = 'Завантаження…';
-      loadAllQueues();
+      let needOverviewFetch = true;
       try {
         const res = await fetchWithTimeout(API_URL, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -696,6 +712,8 @@
               : `Графік на ${data.date}`;
             statusMsg.textContent = 'Готово';
             setStatusBanner('Графік відключень відсутній', 'ok');
+            renderOverviewAllOn();
+            needOverviewFetch = false;
             return;
           }
           cachedEntry = null;
@@ -744,6 +762,8 @@
             : 'Не вдалося підключитися до API або отримати коректний графік. Спробуйте оновити пізніше.',
           'warn'
         );
+      } finally {
+        if (request === loadRequest && needOverviewFetch) loadAllQueues();
       }
     }
 
