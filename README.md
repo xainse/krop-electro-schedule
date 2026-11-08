@@ -9,7 +9,7 @@
 
 Веб-додаток для відображення графіку відключень електрики на 24 години з підтримкою всіх черг (1.1-6.2).
 
-[https://xainse.github.io/krop-electro-schedule/]([url](https://xainse.github.io/krop-electro-schedule/))
+[Відкрити графік](https://xainse.github.io/krop-electro-schedule/)
 
 ## 📋 Опис
 
