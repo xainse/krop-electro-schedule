@@ -11,6 +11,8 @@
 
 [https://xainse.github.io/krop-electro-schedule/]([url](https://xainse.github.io/krop-electro-schedule/))
 
+[https://xainse.github.io/krop-electro-schedule/]([url](https://xainse.github.io/krop-electro-schedule/))
+
 ## 📋 Опис
 
 Цей проєкт показує візуальний графік стану електрики протягом доби з півгодинною точністю. Кожна півгодина відображається окремою клітинкою:
