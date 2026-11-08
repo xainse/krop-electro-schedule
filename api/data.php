@@ -3,7 +3,8 @@
  * Модуль для роботи з JSON файлами (кеш, логи, історія повідомлень)
  * 
  * Функції:
- * - getSchedules() - читання графіків
+ * - getSchedules() - читання графіка на сьогодні
+ * - getScheduleByDate() - читання графіка за датою, включно з минулими
  * - saveSchedules() - збереження графіків
  * - isDataEmpty() - перевірка наявності даних
  * - isDataFresh() - перевірка актуальності
@@ -180,6 +181,34 @@ function getSchedules($queue = null) {
 }
 
 /**
+ * Читає збережений графік за датою, не відкидаючи минулі дні.
+ * @param string $dateDMY Дата DD.MM.YYYY
+ * @return array|null Запис дати або null
+ */
+function getScheduleByDate($dateDMY) {
+    $key = dateToKey($dateDMY);
+    if ($key === false) {
+        return null;
+    }
+    $store = loadSchedulesFile();
+    $entry = $store['dates'][$key] ?? null;
+    return is_array($entry) ? $entry : null;
+}
+
+/**
+ * Зберігає розібраний графік джерела. Явну відсутність графіка не архівує.
+ * @param array $parsed Результат парсера
+ * @param string $source Джерело даних
+ * @return bool
+ */
+function storeFetchedSchedule($parsed, $source) {
+    if (!is_array($parsed) || !empty($parsed['not_announced']) || empty($parsed['date']) || empty($parsed['queues']) || !is_array($parsed['queues'])) {
+        return false;
+    }
+    return saveSchedules($parsed['queues'], $parsed['date'], $parsed['emergency_mode'] ?? false, $source);
+}
+
+/**
  * Зберігає графіки в schedules.json (формат v2 — по датах)
  * @param array $queues Асоціативний масив черг ['1.1' => 'schedule', ...]
  * @param string $date Дата графіку (формат: DD.MM.YYYY)
@@ -196,9 +225,11 @@ function saveSchedules($queues, $date, $emergencyMode, $source, $rawMessage = ''
         return false;
     }
 
+    $savedAt = time();
     $entry = [
         'date' => $date,
-        'timestamp' => time(),
+        'timestamp' => $savedAt,
+        'verified_at' => $savedAt,
         'emergency_mode' => (bool)$emergencyMode,
         'source' => $source,
         'queues' => $queues
@@ -208,8 +239,6 @@ function saveSchedules($queues, $date, $emergencyMode, $source, $rawMessage = ''
     }
 
     $store['dates'][$key] = $entry;
-
-    cleanPastSchedules($store);
 
     return writeSchedulesFile($store);
 }

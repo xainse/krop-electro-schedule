@@ -181,4 +181,240 @@ class AuditRegressionTest extends TestCase {
         $this->assertSame('Europe/Kyiv', $data[3]);
     }
 
+    public function testSaveSchedulesKeepsHistoryAndSkipsAbsenceMarkers(): void {
+        $path = SCHEDULES_FILE;
+        $backup = is_file($path) ? file_get_contents($path) : null;
+        try {
+            @unlink($path);
+            $this->assertTrue(saveSchedules(['1.1' => '01:00-02:00'], '01.01.2024', false, 'test'));
+            $this->assertTrue(saveSchedules(['1.1' => '03:00-04:00'], '02.01.2024', false, 'test'));
+            $store = loadSchedulesFile();
+            $this->assertSame('01:00-02:00', $store['dates']['2024-01-01']['queues']['1.1']);
+            $this->assertSame('03:00-04:00', $store['dates']['2024-01-02']['queues']['1.1']);
+            $this->assertIsInt($store['dates']['2024-01-01']['verified_at']);
+            $this->assertFalse(storeFetchedSchedule([
+                'date' => '03.01.2024',
+                'queues' => [],
+                'not_announced' => true,
+                'notice_verified' => true,
+            ], SOURCE_SITE));
+            $this->assertArrayNotHasKey('2024-01-03', loadSchedulesFile()['dates']);
+            $this->assertTrue(storeFetchedSchedule([
+                'date' => '04.01.2024',
+                'queues' => ['1.1' => ''],
+                'emergency_mode' => false,
+            ], SOURCE_SITE));
+            $stored = getScheduleByDate('04.01.2024');
+            $this->assertSame('', $stored['queues']['1.1']);
+            $this->assertSame(SOURCE_SITE, $stored['source']);
+            $this->assertArrayHasKey('2024-01-01', loadSchedulesFile()['dates']);
+        } finally {
+            if ($backup === null) @unlink($path);
+            else file_put_contents($path, $backup);
+        }
+    }
+
+    public function testDatedScheduleResponseDistinguishesMissingPastAndFuture(): void {
+        $now = strtotime('2026-11-04 12:00:00');
+        $past = scheduleResponseForDate([
+            'date' => '01.01.2024',
+            'timestamp' => $now - 86400,
+            'queues' => ['1.1' => ''],
+            'emergency_mode' => false,
+            'source' => 'telegram',
+        ], '01.01.2024', '1.1', $now);
+        $this->assertSame('', $past['schedule']);
+        $this->assertTrue($past['available']);
+        $this->assertFalse($past['stale']);
+        $this->assertFalse($past['not_announced']);
+        $this->assertSame($now - 86400, $past['updated']);
+
+        $future = scheduleResponseForDate([
+            'date' => '05.11.2026',
+            'verified_at' => $now - 700,
+            'queues' => ['1.1' => '02:00-04:00'],
+            'emergency_mode' => true,
+        ], '05.11.2026', '1.1', $now);
+        $this->assertSame('02:00-04:00', $future['schedule']);
+        $this->assertTrue($future['available']);
+        $this->assertTrue($future['stale']);
+        $this->assertTrue($future['emergency_mode']);
+        $fresh = scheduleResponseForDate([
+            'date' => '05.11.2026',
+            'verified_at' => $now - 30,
+            'queues' => ['1.1' => '02:00-04:00'],
+        ], '05.11.2026', '1.1', $now);
+        $this->assertFalse($fresh['stale']);
+        $this->assertSame('02:00-04:00', $fresh['schedule']);
+
+        $missingPast = scheduleResponseForDate(null, '01.01.2024', '1.1', $now);
+        $this->assertTrue($missingPast['success']);
+        $this->assertFalse($missingPast['available']);
+        $this->assertFalse($missingPast['not_announced']);
+        $this->assertNull($missingPast['schedule']);
+        $this->assertNull($missingPast['updated']);
+        $this->assertSame('Немає збереженого графіка на 01.01.2024', $missingPast['message']);
+
+        $missingFuture = scheduleResponseForDate(null, '05.11.2026', null, $now);
+        $this->assertSame('Графік на 05.11.2026 ще не опубліковано', $missingFuture['message']);
+        $this->assertSame([], (array)$missingFuture['queues']);
+
+        $missingQueue = scheduleResponseForDate([
+            'date' => '01.01.2024',
+            'timestamp' => $now,
+            'queues' => ['1.1' => '02:00-03:00'],
+        ], '01.01.2024', '6.2', $now);
+        $this->assertNull($missingQueue['schedule']);
+        $this->assertFalse($missingQueue['available']);
+        $this->assertSame('Немає даних для черги 6.2 на 01.01.2024', $missingQueue['message']);
+    }
+
+    public function testDateParameterReadsStoredDayWithoutReplacingToday(): void {
+        $runtime = sys_get_temp_dir() . '/krop-date-' . bin2hex(random_bytes(5));
+        mkdir($runtime, 0700);
+        $today = date('d.m.Y');
+        $todayKey = date('Y-m-d');
+        $tomorrow = date('d.m.Y', strtotime('+1 day'));
+        $tomorrowKey = date('Y-m-d', strtotime('+1 day'));
+        $yesterday = date('d.m.Y', strtotime('-1 day'));
+        $yesterdayKey = date('Y-m-d', strtotime('-1 day'));
+        $old = time() - 86400;
+        $fresh = time() - 30;
+        file_put_contents($runtime . '/blackout_cache.json', json_encode([
+            'date' => $today,
+            'verified_at' => $fresh,
+            'queues' => ['1.1' => '08:00-09:00'],
+            'source' => 'cache',
+        ]));
+        file_put_contents($runtime . '/last_source_check.txt', (string)time());
+        file_put_contents($runtime . '/schedules.json', json_encode([
+            'version' => 2,
+            'dates' => [
+                $todayKey => [
+                    'date' => $today,
+                    'timestamp' => $fresh,
+                    'verified_at' => $fresh,
+                    'queues' => ['1.1' => '23:00-24:00'],
+                    'source' => 'schedules',
+                ],
+                $yesterdayKey => [
+                    'date' => $yesterday,
+                    'timestamp' => $old,
+                    'emergency_mode' => false,
+                    'source' => 'telegram',
+                    'queues' => ['1.1' => '12:00-13:00', '1.2' => ''],
+                ],
+                $tomorrowKey => [
+                    'date' => $tomorrow,
+                    'timestamp' => $fresh,
+                    'verified_at' => $fresh,
+                    'emergency_mode' => true,
+                    'source' => 'telegram',
+                    'queues' => ['1.1' => '05:00-06:00'],
+                ],
+            ],
+        ]));
+        try {
+            [$default, $defaultStatus] = $this->runBlackout($runtime, ['queue' => '1.1']);
+            $this->assertSame(200, $defaultStatus);
+            $this->assertSame('08:00-09:00', $default['schedule']);
+            $this->assertSame($today, $default['date']);
+
+            [$explicitToday] = $this->runBlackout($runtime, ['queue' => '1.1', 'date' => $today]);
+            $this->assertSame('08:00-09:00', $explicitToday['schedule']);
+
+            [$next, $nextStatus] = $this->runBlackout($runtime, ['queue' => '1.1', 'date' => $tomorrow]);
+            $this->assertSame(200, $nextStatus);
+            $this->assertSame('05:00-06:00', $next['schedule']);
+            $this->assertTrue($next['available']);
+            $this->assertFalse($next['stale']);
+            $this->assertFalse($next['not_announced']);
+            $this->assertTrue($next['emergency_mode']);
+            $this->assertSame($fresh, $next['updated']);
+
+            [$previous] = $this->runBlackout($runtime, ['queue' => '1.1', 'date' => $yesterday]);
+            $this->assertSame('12:00-13:00', $previous['schedule']);
+            $this->assertFalse($previous['stale']);
+            $this->assertSame($old, $previous['updated']);
+
+            [$emptyQueue] = $this->runBlackout($runtime, ['queue' => '1.2', 'date' => $yesterday]);
+            $this->assertSame('', $emptyQueue['schedule']);
+            $this->assertTrue($emptyQueue['available']);
+
+            [$absentQueue, $absentStatus] = $this->runBlackout($runtime, ['queue' => '6.2', 'date' => $yesterday]);
+            $this->assertSame(200, $absentStatus);
+            $this->assertNull($absentQueue['schedule']);
+            $this->assertFalse($absentQueue['available']);
+            $this->assertFalse($absentQueue['not_announced']);
+            $this->assertSame('Немає даних для черги 6.2 на ' . $yesterday, $absentQueue['message']);
+
+            [$missingPast, $missingPastStatus] = $this->runBlackout($runtime, ['queue' => '1.1', 'date' => '15.03.2020']);
+            $this->assertSame(200, $missingPastStatus);
+            $this->assertNull($missingPast['schedule']);
+            $this->assertSame('Немає збереженого графіка на 15.03.2020', $missingPast['message']);
+
+            [$missingFuture] = $this->runBlackout($runtime, ['all' => '1', 'date' => '01.01.2099']);
+            $this->assertSame('Графік на 01.01.2099 ще не опубліковано', $missingFuture['message']);
+            $this->assertFalse($missingFuture['not_announced']);
+            $this->assertSame([], $missingFuture['queues']);
+
+            [$overview] = $this->runBlackout($runtime, ['all' => '1', 'date' => $tomorrow]);
+            $this->assertSame('05:00-06:00', $overview['queues']['1.1']);
+            $this->assertTrue($overview['available']);
+        } finally {
+            $this->removeRuntime($runtime);
+        }
+    }
+
+    public function testDateParameterRejectsInvalidValues(): void {
+        $file = realpath(__DIR__ . '/../../api/blackout.php');
+        foreach (['31.02.2026', '2026-11-05', '4.11.2026'] as $date) {
+            $query = ['queue' => '1.1', 'date' => $date];
+            $script = '$_SERVER["REQUEST_METHOD"]="GET"; $_GET=' . var_export($query, true) . '; register_shutdown_function(function(){echo "\nSTATUS=".http_response_code();});require ' . var_export($file, true) . ';';
+            $output = shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script));
+            $this->assertStringContainsString('STATUS=400', $output, $date);
+            $json = json_decode(explode("\nSTATUS=", $output)[0], true);
+            $this->assertFalse($json['success']);
+            $this->assertSame('Invalid date. Expected DD.MM.YYYY', $json['error']);
+        }
+        $script = '$_SERVER["REQUEST_METHOD"]="GET"; $_GET=' . var_export(['queue' => '1.1', 'date' => ['04.11.2026']], true) . '; register_shutdown_function(function(){echo "\nSTATUS=".http_response_code();});require ' . var_export($file, true) . ';';
+        $output = shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script));
+        $this->assertStringContainsString('STATUS=400', $output);
+        $json = json_decode(explode("\nSTATUS=", $output)[0], true);
+        $this->assertSame('Parameters must be strings', $json['error']);
+    }
+
+    public function testMissingFutureDateIsNotAServiceFailure(): void {
+        $runtime = sys_get_temp_dir() . '/krop-date-empty-' . bin2hex(random_bytes(5));
+        mkdir($runtime, 0700);
+        file_put_contents($runtime . '/last_source_check.txt', (string)time());
+        try {
+            [$data, $status] = $this->runBlackout($runtime, ['queue' => '1.1', 'date' => '01.01.2099']);
+            $this->assertSame(200, $status);
+            $this->assertTrue($data['success']);
+            $this->assertFalse($data['available']);
+            $this->assertFalse($data['not_announced']);
+            $this->assertNull($data['schedule']);
+            $this->assertSame('Графік на 01.01.2099 ще не опубліковано', $data['message']);
+        } finally {
+            $this->removeRuntime($runtime);
+        }
+    }
+
+    private function runBlackout(string $runtime, array $query): array {
+        $endpoint = realpath(__DIR__ . '/../../api/blackout.php');
+        $script = "define('KROP_TEST_MODE',true); define('ENABLE_LOGGING',false); define('CACHE_DIR'," . var_export($runtime, true) . "); define('LOGS_DIR',CACHE_DIR.'/logs'); \$_SERVER['REQUEST_METHOD']='GET'; \$_GET=" . var_export($query, true) . '; register_shutdown_function(function(){echo "\nSTATUS=".http_response_code();}); require ' . var_export($endpoint, true) . ';';
+        $output = shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script));
+        $parts = explode("\nSTATUS=", (string)$output);
+        return [json_decode($parts[0], true), (int)($parts[1] ?? 0)];
+    }
+
+    private function removeRuntime(string $runtime): void {
+        foreach (glob($runtime . '/*') as $file) if (is_file($file)) unlink($file);
+        @unlink($runtime . '/logs/.htaccess');
+        @rmdir($runtime . '/logs');
+        @unlink($runtime . '/.htaccess');
+        @rmdir($runtime);
+    }
+
 }

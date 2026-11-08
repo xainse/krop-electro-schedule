@@ -39,6 +39,7 @@ function fetchFromSite() {
     
     // ГАВ визначаємо тією ж логікою, що й для Telegram (parser.php)
     $parsed['emergency_mode'] = detectEmergencyMode($extractedText ?? '');
+    storeFetchedSchedule($parsed, SOURCE_SITE);
     return $parsed;
 }
 

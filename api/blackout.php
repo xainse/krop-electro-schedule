@@ -30,7 +30,7 @@ if ($method !== 'GET') {
     header('Allow: GET, OPTIONS');
     respond(['success' => false, 'error' => 'Method not allowed'], 405);
 }
-foreach (['queue', 'all', 'force_refresh', 'test_emergency'] as $parameter) {
+foreach (['queue', 'all', 'force_refresh', 'test_emergency', 'date'] as $parameter) {
     if (isset($_GET[$parameter]) && !is_string($_GET[$parameter])) {
         respond(['success' => false, 'error' => 'Parameters must be strings'], 400);
     }
@@ -42,6 +42,11 @@ $requestAll = ($_GET['all'] ?? '') === '1';
 $queue = trim($_GET['queue'] ?? '');
 if ((!$requestAll || $queue !== '') && !preg_match('/^[1-6]\.[12]$/D', $queue)) {
     respond(['success' => false, 'error' => 'Invalid queue. Expected 1.1 through 6.2'], 400);
+}
+$requestedDate = isset($_GET['date']) ? trim($_GET['date']) : '';
+if ($requestedDate !== '' && (!preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/D', $requestedDate, $dateMatch)
+    || !checkdate((int)$dateMatch[2], (int)$dateMatch[1], (int)$dateMatch[3]))) {
+    respond(['success' => false, 'error' => 'Invalid date. Expected DD.MM.YYYY'], 400);
 }
 
 require_once __DIR__ . '/security.php';
@@ -111,11 +116,19 @@ if ($view['stale']) {
         }
     } elseif ($lock) fclose($lock);
 }
-$response = scheduleResponse($cache, $requestAll ? null : $queue);
+$requestedKey = $requestedDate === '' ? date('Y-m-d') : dateToKey($requestedDate);
+$explicitOtherDay = $requestedDate !== '' && $requestedKey !== date('Y-m-d');
+if ($explicitOtherDay) {
+    $response = scheduleResponseForDate(getScheduleByDate($requestedDate), $requestedDate, $requestAll ? null : $queue);
+    $status = 200;
+} else {
+    $response = scheduleResponse($cache, $requestAll ? null : $queue);
+    $status = $cache === null && !$response['available'] ? 503 : 200;
+}
 logApiRequest([
     'queue' => $requestAll ? 'all' : $queue,
     'source' => $response['source'] ?? 'unavailable',
     'success' => $response['available'],
     'response_time_ms' => round((microtime(true) - $start) * 1000, 2),
 ]);
-respond($response, $cache === null && !$response['available'] ? 503 : 200);
+respond($response, $status);
